@@ -54,29 +54,48 @@ function splitSections(body: string): Map<string, string> {
 function parseScenarios(text: string): { scenarios: SkillRequest["scenarios"]; errors: RequestError[] } {
   const scenarios: SkillRequest["scenarios"] = [];
   const errors: RequestError[] = [];
-  let pending: string | null = null;
+  let scenario: string | null = null;
+  let expected: string | null = null;
+
+  /** Close the pair being built, or report the half that never got its other half. */
+  const flush = () => {
+    if (scenario === null) return;
+    if (expected === null) {
+      errors.push({ code: "scenario-format", field: "scenarios", message: `"${scenario}" has no "Expected:" line` });
+    } else {
+      scenarios.push({ scenario, expected });
+    }
+    scenario = null;
+    expected = null;
+  };
 
   for (const rawLine of text.split("\n")) {
     const line = rawLine.replace(/^\s*[-*]\s*/, "").trim();
-    const scenario = /^scenario\s*:\s*(.+)$/i.exec(line);
-    const expected = /^expected(?:\s+results?)?\s*:\s*(.+)$/i.exec(line);
-    if (scenario) {
-      if (pending) {
-        errors.push({ code: "scenario-format", field: "scenarios", message: `"${pending}" has no "Expected:" line` });
-      }
-      pending = scenario[1]!.trim();
-    } else if (expected) {
-      if (pending) {
-        scenarios.push({ scenario: pending, expected: expected[1]!.trim() });
-        pending = null;
+    if (line === "") continue;
+    const startsScenario = /^scenario\s*:\s*(.+)$/i.exec(line);
+    const startsExpected = /^expected(?:\s+results?)?\s*:\s*(.+)$/i.exec(line);
+    if (startsScenario) {
+      flush();
+      scenario = startsScenario[1]!.trim();
+    } else if (startsExpected) {
+      if (scenario === null) {
+        errors.push({ code: "scenario-format", field: "scenarios", message: `"Expected: ${startsExpected[1]}" has no "Scenario:" line` });
+      } else if (expected !== null) {
+        errors.push({ code: "scenario-format", field: "scenarios", message: `"${scenario}" has two "Expected:" lines` });
       } else {
-        errors.push({ code: "scenario-format", field: "scenarios", message: `"Expected: ${expected[1]}" has no "Scenario:" line` });
+        expected = startsExpected[1]!.trim();
       }
+    } else if (expected !== null) {
+      // Requesters wrap. Reading only the first line silently drops the half
+      // that says what should happen — "Expected: the score is below 4 / it is
+      // not ready" would reach the generator as a condition with no
+      // consequence, and the eval written from it would assert nothing.
+      expected = `${expected}\n${line}`;
+    } else if (scenario !== null) {
+      scenario = `${scenario}\n${line}`;
     }
   }
-  if (pending) {
-    errors.push({ code: "scenario-format", field: "scenarios", message: `"${pending}" has no "Expected:" line` });
-  }
+  flush();
   if (scenarios.length === 0 && errors.length === 0) {
     errors.push({
       code: "no-scenarios",

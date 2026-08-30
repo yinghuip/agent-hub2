@@ -33,6 +33,14 @@ inputs:
     description: Passed as GH_TOKEN when the run needs the gh CLI. Omit when it does not.
     required: false
     default: ""
+  timeout-minutes:
+    description: >
+      Cap on this one turn. The job's own cap covers every turn together, so
+      without a per-turn bound one stalled request spends the budget the eval
+      rounds still need. Composite steps take no `timeout-minutes`, hence
+      `timeout` around the command.
+    required: false
+    default: "25"
 
 runs:
   using: composite
@@ -45,6 +53,7 @@ runs:
         AGENT_SUBAGENT_MODEL: ${{ inputs.subagent-model }}
         AGENT_PROMPT: ${{ inputs.prompt }}
         AGENT_TOOLS: ${{ inputs.allowed-tools }}
+        AGENT_TIMEOUT: ${{ inputs.timeout-minutes }}
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
         export ANTHROPIC_API_KEY="$AGENT_API_KEY"
@@ -68,8 +77,20 @@ runs:
         # There is nobody at the keyboard to answer a permission prompt, and the
         # blast radius is one ephemeral runner holding a fresh checkout, so the
         # run is unattended by design; --allowed-tools still states what it needs.
-        npx --yes @anthropic-ai/claude-code@latest \
-          --print "$AGENT_PROMPT" \
-          --allowed-tools "$AGENT_TOOLS" \
-          --permission-mode bypassPermissions \
-          --output-format text
+        #
+        # stream-json prints each tool call as it happens. Plain text buffers the
+        # whole turn, so a run that is working and a run that has hung look
+        # identical — minutes of nothing — and there is nobody watching who can
+        # tell them apart.
+        status=0
+        timeout --signal=TERM --kill-after=1m "${AGENT_TIMEOUT}m" \
+          npx --yes @anthropic-ai/claude-code@latest \
+            --print "$AGENT_PROMPT" \
+            --allowed-tools "$AGENT_TOOLS" \
+            --permission-mode bypassPermissions \
+            --output-format stream-json --verbose || status=$?
+
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "::error::the agent turn was still running after ${AGENT_TIMEOUT} minutes and was stopped"
+        fi
+        exit $status

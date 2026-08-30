@@ -157,6 +157,7 @@ jobs:
         id: generated
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           touched=$(git diff --name-only "$BASE_SHA"..HEAD -- plugins/ | cut -d/ -f2 | sort -u)
           if [ -z "$touched" ]; then
@@ -179,6 +180,19 @@ jobs:
           fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
+          # Push before anything else can fail. The runner is ephemeral, so work
+          # left only in its checkout is work thrown away — and when the run does
+          # fail, the branch is the one thing a human can still pick up.
+          #
+          # A plain push, never a forced one: a second attempt at the same request
+          # branches from main again, so its history diverges from the first, and
+          # whatever a reviewer pushed onto the old branch would be the thing a
+          # force overwrote.
+          if ! git push origin "HEAD:refs/heads/$branch"; then
+            echo "::error::could not push '$branch' — the remote already has that branch on a different history, most likely from an earlier attempt at this request. Close its pull request and delete the branch, then re-apply the label."
+            exit 1
+          fi
+
           # The evals have to exist and be well formed before the rounds can run
           # them; a missing file here is a generation bug, not an eval failure.
           status=0
@@ -200,6 +214,17 @@ jobs:
               status=1
             }
           done
+
+          # Opening the pull request is the delivery: a branch nobody was asked to
+          # look at is not an answered request, however green the evals come back.
+          # Checked here rather than at the end because there are no reviewers to
+          # show grades to, so spending three eval rounds first buys nothing.
+          pr=$(gh pr list --head "$branch" --json number --jq '.[0].number' || true)
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          if [ -z "$pr" ]; then
+            echo "::error::the run pushed '$branch' but opened no pull request, so nothing went for review. If the run log shows 'gh pr create' returning 403, turn on Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests', then re-apply the label."
+            status=1
+          fi
           exit $status
 
       # Run, grade, refine — and go round again while anything still fails. Each
@@ -248,10 +273,11 @@ jobs:
       # never passed is still worth looking at, and hiding the failures would
       # leave the requester guessing why nothing landed.
       - name: Publish the eval results
-        if: always() && steps.generated.outputs.dir != ''
+        if: always() && steps.generated.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.generated.outputs.branch }}
+          PR: ${{ steps.generated.outputs.pr }}
           ENGINE: ${{ needs.config.outputs.engine-id }}
           ENGINE_MODEL: ${{ needs.config.outputs.engine-model }}
           R1: ${{ steps.round1.outputs.passed }}
@@ -293,15 +319,12 @@ jobs:
             git push origin "HEAD:refs/heads/$BRANCH"
           fi
 
-          number=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || true)
-          if [ -n "$number" ]; then
-            gh pr view "$number" --json body --jq .body > "$RUNNER_TEMP/pr-body.md"
-            # Drop any previous results section so re-runs replace rather than stack.
-            awk '/^## Eval results$/{exit} {print}' "$RUNNER_TEMP/pr-body.md" > "$RUNNER_TEMP/pr-body-new.md"
-            printf '\n' >> "$RUNNER_TEMP/pr-body-new.md"
-            cat "$report" >> "$RUNNER_TEMP/pr-body-new.md"
-            gh pr edit "$number" --body-file "$RUNNER_TEMP/pr-body-new.md"
-          fi
+          gh pr view "$PR" --json body --jq .body > "$RUNNER_TEMP/pr-body.md"
+          # Drop any previous results section so re-runs replace rather than stack.
+          awk '/^## Eval results$/{exit} {print}' "$RUNNER_TEMP/pr-body.md" > "$RUNNER_TEMP/pr-body-new.md"
+          printf '\n' >> "$RUNNER_TEMP/pr-body-new.md"
+          cat "$report" >> "$RUNNER_TEMP/pr-body-new.md"
+          gh pr edit "$PR" --body-file "$RUNNER_TEMP/pr-body-new.md"
 
           if [ -z "$passed" ]; then
             echo "::error::the eval rounds did not complete, so nothing was graded"
@@ -320,8 +343,21 @@ jobs:
           path: ${{ runner.temp }}/skill-eval
           if-no-files-found: ignore
 
+      # Say where the work actually is. Pointing at "the linked pull request"
+      # unconditionally sent requesters looking for one that was never opened.
       - name: Tell the requester
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh issue comment "${{ github.event.issue.number }}" --body "Generation run finished with status \`${{ job.status }}\`. See the linked pull request, or the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          PR: ${{ steps.generated.outputs.pr }}
+          BRANCH: ${{ steps.generated.outputs.branch }}
+        run: |
+          log="[run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          if [ -n "$PR" ]; then
+            where="See #$PR, or the $log."
+          elif [ -n "$BRANCH" ]; then
+            where="No pull request was opened, so there is nothing to review yet. The generated skill is on the \`$BRANCH\` branch and the grades are in the $log."
+          else
+            where="Nothing was generated — see the $log."
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body "Generation run finished with status \`${{ job.status }}\`. $where"
