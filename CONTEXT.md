@@ -7,7 +7,9 @@ GitHub Pages is the catalog. There is no backend service anywhere.
 ## Glossary
 
 - **Plugin** — one directory under `plugins/`: the unit that is versioned,
-  owned, listed and installed. Never called a "package".
+  owned, listed and installed. A topical collection of skills, not a wrapper
+  around one skill: skills accrete into the plugin whose topic they belong to.
+  Never called a "package".
 - **Skill** — one `SKILL.md` (plus its directory) inside a plugin's `skills/`.
   A plugin ships one or more skills. "Skill" is the user-facing word for what
   someone wants; "plugin" is the shipping unit.
@@ -39,6 +41,12 @@ GitHub Pages is the catalog. There is no backend service anywhere.
   *distinct*, and surfaced as a comment plus the `possible-duplicate` label. The
   same ranker runs in the catalog's request form, embedded verbatim, so the two
   can never disagree. Advisory only: nothing is ever closed automatically.
+  *Extend* is the expected common case, not an edge case — a matching request
+  is answered by upserting into the existing plugin, not by a new one.
+- **Seed collection** — an entry in `agent-hub.config.json` (`collections`)
+  naming a topic the hub wants a plugin for before one exists. Generation
+  targets it like an existing plugin; the directory is created lazily by the
+  first skill that lands in it.
 - **Stale** — no update for `staleAfterDays` (6 months). A badge only; nothing
   is auto-removed.
 

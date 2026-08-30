@@ -1,5 +1,11 @@
 # Contributing a plugin
 
+A plugin is a topical collection of skills, not a wrapper around one skill.
+Before creating a new plugin, look for an existing one (or a seed collection in
+`agent-hub.config.json`) your skill belongs to and add it there, bumping the
+plugin's version — minor for a new skill, patch for changes to an existing one.
+See `docs/adr/0001-plugins-as-topical-collections.md` for why.
+
 ## Layout
 
 ```
