@@ -553,9 +553,11 @@ and you stay reachable for questions and get notified when the skill ships.</p>
   <div id="similar" role="status" hidden></div>
 
   <fieldset aria-required="true"><legend>Which roles is this for?</legend>
+    <div class="checks">
     ${ROLES.map(
       (role) => `<label class="check"><input type="checkbox" name="roles" value="${escape(role)}"> ${escape(role)}</label>`,
     ).join("\n    ")}
+    </div>
   </fieldset>
 
   <label>What problem should this skill solve?
@@ -1057,7 +1059,9 @@ footer a { color: var(--invert-fg); }
 .panel pre { margin: 0; overflow-x: auto; font-size: .875rem; }
 /* The command is the point of the page: nothing overlaps it. */
 .panel-bar { display: flex; justify-content: flex-end; margin-bottom: .85rem; }
-.copy { padding: .35rem .75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+/* The one secondary-action recipe: outlined, micro caps, zero radius. */
+.copy, .ghost { padding: .45rem .9rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+.copy:hover, .ghost:hover { border-color: var(--fg); }
 .prose { max-width: 68ch; }
 .prose h1, .prose h2, .prose h3 { margin: 2rem 0 .75rem; }
 .prose h1 { font-size: 1.75rem; }
@@ -1078,19 +1082,22 @@ form input, form textarea, form select {
   border: 1px solid var(--line-ui);
   border-radius: 0;
 }
-fieldset { margin-top: 1.5rem; padding: 1rem 1.25rem 1.25rem; border: 1px solid var(--line); }
+/* Fieldsets speak the same language as single fields: the group label sits
+   above the group, never notched into a border. */
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { float: left; width: 100%; padding: 0; margin: 1.5rem 0 .35rem; }
+.checks { border: 1px solid var(--line-ui); background: var(--surface); padding: 1rem 1.25rem .5rem; }
 
 /* Examples: structured pairs, so the Scenario:/Expected: convention is the
-   page's job, never the requester's. */
-.examples .hint { margin: 0 0 1rem; }
+   page's job, never the requester's. Each example takes the detail page's
+   panel recipe: a surface with its fields on the page ground. */
+.examples .hint { margin: 0 0 .75rem; }
 .example-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
-.example { border: 1px solid var(--line); border-left: 3px solid var(--line-ui); padding: .25rem 1rem 1rem; }
-.example label { margin: .75rem 0 .35rem; }
-.example textarea { resize: vertical; }
-.example-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .75rem; }
-.example-n { font-family: var(--display); text-transform: uppercase; font-size: .6875rem; letter-spacing: .12em; color: var(--muted); }
-.ghost { padding: .45rem .9rem; background: transparent; color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
-.ghost:hover { border-color: var(--fg); }
+.example { background: var(--surface); border: 1px solid var(--line); padding: 1rem 1.25rem 1.25rem; }
+.example label { margin: .9rem 0 .35rem; font-size: .6875rem; letter-spacing: .12em; color: var(--muted); }
+.example textarea { background: var(--bg); resize: vertical; }
+.example-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 1.75rem; }
+.example-n { font-family: var(--display); text-transform: uppercase; font-size: .6875rem; letter-spacing: .12em; color: var(--fg); font-weight: 700; }
 #add-example { margin-top: 1rem; }
 legend { font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
 label.check { display: inline-flex; align-items: center; gap: .4rem; margin: 0 1.25rem .5rem 0; font-family: var(--body); text-transform: none; letter-spacing: 0; font-size: .9375rem; }
