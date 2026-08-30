@@ -16,20 +16,19 @@ body:
       placeholder: PR review checklist
     validations:
       required: true
-  - type: dropdown
+  # An input rather than a dropdown: GitHub's URL prefill fills inputs and
+  # textareas but not dropdowns, and the catalog's request form hands its answers
+  # over through the query string. The parser checks the values against the
+  # taxonomy and names the whole list back if one is wrong.
+  - type: input
     id: roles
     attributes:
       label: Roles
-      description: Who is this skill for? Pick every role that applies.
-      multiple: true
-      options:
-        - Developer
-        - QA
-        - Business Analyst
-        - Product Owner
-        - Scrum Master
-        - UX Designer
-        - General
+      description: >
+        Who is this skill for? List every role that applies, comma-separated,
+        from: Developer, QA, Business Analyst, Product Owner, Scrum Master,
+        UX Designer, General.
+      placeholder: Developer, QA
     validations:
       required: true
   - type: textarea
@@ -53,12 +52,5 @@ body:
 
         Scenario: A PR only touches tests
         Expected: The skill says no checklist items apply
-    validations:
-      required: true
-  - type: input
-    id: team
-    attributes:
-      label: Your team
-      description: Who will own this skill once it ships?
     validations:
       required: true

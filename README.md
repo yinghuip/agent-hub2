@@ -35,10 +35,14 @@ One-time settings the pipeline assumes but cannot apply itself:
 ```bash
 gh label create skill-request --description "A request for a new agent skill" --color 0E8A16
 gh label create needs-triage --description "Maintainer needs to evaluate this issue" --color FBCA04
+gh label create possible-duplicate --description "An existing skill or open request may already cover this" --color C5DEF5
 ```
 
-Requests carry both labels. A requester's fine-grained token cannot create a
-missing label, so an unlabelled request would never reach triage.
+Requests carry the first two labels, applied by the issue template, which can
+only apply labels that already exist — an unlabelled request never reaches
+triage. The third is applied by the duplicate check below; create it up front so
+it has a description and a colour, and so triage can filter on it before the
+first one lands.
 
 Generation also needs a key for whichever model you run it on, in one secret:
 
@@ -91,20 +95,70 @@ A skill that still fails on the last round gets its pull request anyway, with
 the misses spelled out, and the run is marked failed. Nothing arrives claiming
 to work on nobody's evidence.
 
-The form posts straight to the GitHub API from the browser, authenticated with
-the requester's own fine-grained personal access token (`Issues: Read and write`
-on this repo). The token goes to `api.github.com` and nowhere else — there is no
-server to send it to, and the page never stores it. 401 / 403 / 404 responses are
-explained in place, and GitHub's own issue form stays on the page as a fallback,
-carrying over whatever has been typed.
+The catalog's form asks for no credential. It checks the answers a requester
+types — at least one role, at least one `Scenario:`/`Expected:` pair — then opens
+GitHub's own issue form in a new tab with every field prefilled, and leaves the
+typed answers on the page in case anything did not carry over. Authentication is
+whatever GitHub session the requester already has, and the labels come from the
+template rather than from the URL, so they apply regardless of the requester's
+permissions.
 
-A fine-grained PAT is the only no-backend option: completing an OAuth or device
-flow needs a token exchange that GitHub does not expose to browsers. Note that a
-token for an organisation-owned repo needs an org admin to approve it.
+### Does it already exist?
 
-The page builds the issue body with the build's own `renderRequestIssue`,
-emitted into the page verbatim, so what a requester posts is exactly what the
-generation agent's parser reads back.
+The best request is the one nobody has to write. The form ranks what you type
+against every published skill — as you type it, and again when you submit — and
+shows you the closest matches with the commands that install them. It never
+blocks: if none of them fit, the button becomes **Continue anyway**.
+
+The page ranks against the catalog only. Open requests are not in the catalog and
+the page has no credential to read them, so it links to the open queue rather
+than implying the list is complete. The check that *does* see open requests runs
+where a token exists: on the issue.
+
+Every request is checked again once it is an issue — including ones filed on
+GitHub directly, and again whenever one is edited. `check-duplicate.yml` shortlists
+by wording, an agent judges whether each candidate really covers the request, and
+the bot leaves one comment saying which skill to install instead, or which open
+request to add your scenarios to. A match also adds `possible-duplicate`; editing
+the request until it no longer matches takes the label off again. Nothing is ever
+closed automatically, and the comment is edited in place rather than repeated.
+
+When an existing skill *nearly* covers a request, the answer is to extend that
+plugin rather than ship a second one that overlaps it — say what is missing on
+the issue, and generation amends the existing plugin instead of creating a new one.
+
+How alike two skills must read before any of this fires is `similarityFloor` in
+`agent-hub.config.json`. Run the same check by hand with:
+
+```bash
+node packages/cli/bin/agent-hub.js find-similar --title "Some skill" --problem "What goes wrong today"
+node packages/cli/bin/agent-hub.js find-similar --all   # published plugins that read like each other
+```
+
+### Carrying the answers over
+
+The prefill parameters are the issue template's own field ids, emitted into the
+page from `REQUEST_SECTIONS` — the same table the parser reads headings from — so
+the page, the template and the parser cannot drift apart. A test asserts every
+parameter still matches an `id:` in `skill-request.yml`.
+
+Two consequences of relying on URL prefill, both handled in the page:
+
+- GitHub fills inputs and textareas but not dropdowns, so `Roles` is a
+  comma-separated input. `parseSkillRequest` checks the values against the
+  taxonomy and names the whole list back if one is wrong.
+- An over-long URL gets a 414. Past a 6000-character budget the page drops
+  `scenarios` from the link and puts it on the clipboard instead, so the other
+  three answers and the labels still carry.
+
+Requesters are not asked who will own the skill. Generated plugins take
+`ownerTeam` from `defaultOwnerTeam` in `agent-hub.config.json`, and their
+CODEOWNERS line from `platformReviewers`; a reviewer reassigns either on the
+pull request, which is a required gate anyway.
+
+At triage, `needs-triage` minus `possible-duplicate` is the queue that still
+needs a human decision; the rest already have an answer waiting for the requester
+to accept or reject.
 
 Generated PRs must never merge on the agent's own say-so. Protect `main` with
 "Require a pull request before merging", "Require review from Code Owners" and
