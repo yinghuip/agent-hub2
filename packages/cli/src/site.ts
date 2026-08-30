@@ -42,6 +42,7 @@ function layout(config: HubConfig, title: string, body: string, depth: number): 
 <header class="site">
   <a class="brand" href="${base}/index.html">${escape(config.displayName)}</a>
   <nav class="utility">
+    <a href="${base}/contribute.html">Contribute</a>
     <a href="${base}/request.html">Request a skill</a>
     <a href="https://github.com/${escape(config.repo)}">Repository</a>
   </nav>
@@ -173,7 +174,7 @@ ${
       <h2>Contribute a skill</h2>
       <p>Add a directory under <code>plugins/</code>, write one <code>plugin.yaml</code> and your
       <code>SKILL.md</code> files, then open a pull request. CI generates every manifest.</p>
-      <a class="cta" href="https://github.com/${escape(config.repo)}/blob/main/CONTRIBUTING.md">Read the guide</a>
+      <a class="cta" href="./contribute.html">Read the guide</a>
     </article>
     <article class="path">
       <h2>Request a skill</h2>
@@ -360,9 +361,36 @@ function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
   return layout(config, `${plugin.name} - ${config.displayName}`, body, 1);
 }
 
+/**
+ * The contributor guide, published from the repo's own CONTRIBUTING.md so the
+ * site and the repo cannot disagree about how to contribute.
+ */
+function contributePage(config: HubConfig, contributingHtml: string | null): string {
+  const repo = `https://github.com/${escape(config.repo)}`;
+  const body = `<article class="detail">
+  <header class="detail-head">
+    <h1>Contribute a skill</h1>
+    <p class="lede">Hand-written plugins go through the same gate as generated ones.</p>
+  </header>
+  ${
+    contributingHtml
+      ? `<div class="prose">${contributingHtml}</div>
+  <p class="hint">Published from <code>CONTRIBUTING.md</code> in the repository.
+  <a href="${repo}">Browse the repository</a> to see it in context.</p>`
+      : `<p>Add a directory under <code>plugins/</code> with one <code>plugin.yaml</code>, a README and your
+  <code>SKILL.md</code> files, then open a pull request. CI generates every manifest and runs the validation
+  gate.</p>
+  <p class="hint">This repository has no <code>CONTRIBUTING.md</code> yet, so the full guide is not published
+  here. <a href="${repo}">Browse the repository</a>.</p>`
+  }
+</article>`;
+  return layout(config, `Contribute a skill - ${config.displayName}`, body, 0);
+}
+
 function requestPage(config: HubConfig): string {
   const repo = JSON.stringify(config.repo);
-  const body = `<h1>Request a skill</h1>
+  const body = `<article class="detail">
+<h1>Request a skill</h1>
 <p class="lede">Describe what you need in plain language. Your request becomes a GitHub issue under
 <strong>your own</strong> account, so you stay reachable for questions and get notified when the skill ships.</p>
 
@@ -509,7 +537,8 @@ It carries over whatever you have typed here.</p>
   });
 })();
 </script>`;
-  return layout(config, `Request a skill - ${config.displayName}`, body, 0);
+  return layout(config, `Request a skill - ${config.displayName}`, `${body}
+</article>`, 0);
 }
 
 const STYLES = `@font-face {
@@ -715,7 +744,8 @@ footer a { color: var(--invert-fg); }
 .cta:active { transform: translateY(1px); }
 
 /* Plugin detail. */
-.detail { max-width: 68rem; }
+/* Detail pages are not <section>, so they carry the well and gutter themselves. */
+.detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }
 .detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; }
 .detail-head .lede { flex-basis: 100%; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0; margin: 2.5rem 0; border-top: 1px solid var(--line); }
@@ -809,6 +839,8 @@ export function generateSite(analysis: Analysis, config: HubConfig): Map<string,
   files.set("dist/site/index.json", `${JSON.stringify(catalogIndex(analysis, config), null, 2)}\n`);
   files.set("dist/site/index.html", homePage(analysis, config));
   files.set("dist/site/request.html", requestPage(config));
+  // Always emitted: the contribute path exists whether or not a guide file does.
+  files.set("dist/site/contribute.html", contributePage(config, analysis.contributingHtml));
   files.set("dist/site/styles.css", STYLES);
   for (const plugin of analysis.plugins) {
     files.set(`dist/site/plugins/${plugin.name}.html`, pluginPage(plugin, config));

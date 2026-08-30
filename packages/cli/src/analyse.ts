@@ -23,6 +23,8 @@ export type Analysis = {
   config: HubConfig | null;
   plugins: CatalogPlugin[];
   recentlyAdded: string[];
+  /** The repo's contributor guide, rendered, when it has one. */
+  contributingHtml: string | null;
   errors: ValidationError[];
   now: Date;
 };
@@ -34,6 +36,9 @@ export async function analyse({ root, now = new Date() }: AnalyseOptions): Promi
   const config = await loadConfig(root, errors);
   const raw = await loadPlugins(root);
   const codeowners = await readCodeowners(root);
+  const contributing = await readFile(join(root, "CONTRIBUTING.md"), "utf8").catch(() => null);
+  const contributingHtml =
+    contributing === null ? null : demoteHeadings(marked.parse(contributing, { async: false }));
 
   const plugins: CatalogPlugin[] = [];
   const seenNames = new Map<string, string>();
@@ -69,7 +74,7 @@ export async function analyse({ root, now = new Date() }: AnalyseOptions): Promi
         .map((p) => p.name)
     : [];
 
-  return { config, plugins, recentlyAdded, errors, now };
+  return { config, plugins, recentlyAdded, contributingHtml, errors, now };
 }
 
 /**

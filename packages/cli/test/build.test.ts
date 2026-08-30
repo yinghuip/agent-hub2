@@ -276,6 +276,58 @@ describe("catalog shell", () => {
   });
 });
 
+describe("contribute page", () => {
+  const guide = "# Contributing a plugin\n\nOne directory under `plugins/`.\n\n## The portable subset\n\nSkills and mcp.json only.\n";
+
+  it("publishes the contributor guide on the site so the path has a destination", async () => {
+    const root = await writeTree(validTree({ "CONTRIBUTING.md": guide }));
+    await build({ root, now: NOW });
+
+    const page = await read(root, "dist/site/contribute.html");
+    expect(page).toContain("Contributing a plugin");
+    expect(page).toContain("The portable subset");
+    expect(page).toContain("<code>plugins/</code>");
+    expect(page.match(/<h1/g)).toHaveLength(1);
+
+    const home = await read(root, "dist/site/index.html");
+    expect(home).toContain('href="./contribute.html"');
+    expect(home).not.toContain("blob/main/CONTRIBUTING.md");
+  });
+
+  it("still gives the path a page when the repo has no guide file", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+
+    // The nav links here from every page, so it must never 404.
+    const page = await read(root, "dist/site/contribute.html");
+    expect(page).toContain("Contribute a skill");
+    expect(page).toContain("github.com/acme/agent-hub");
+    expect(page).toContain("no <code>CONTRIBUTING.md</code> yet");
+  });
+
+  it("frames every detail page with the same well and gutter", async () => {
+    const root = await writeTree(validTree({ "CONTRIBUTING.md": "# Guide\n\nText.\n" }));
+    await build({ root, now: NOW });
+
+    // Detail pages are not <section>, so the frame has to come from .detail.
+    expect(await read(root, "dist/site/styles.css")).toContain(
+      ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }",
+    );
+    for (const file of ["request.html", "contribute.html", "plugins/pr-review.html"]) {
+      expect(await read(root, `dist/site/${file}`)).toContain('<article class="detail">');
+    }
+  });
+
+  it("links the contribute path from every page's navigation", async () => {
+    const root = await writeTree(validTree({ "CONTRIBUTING.md": "# Guide\n\nText.\n" }));
+    await build({ root, now: NOW });
+
+    for (const file of ["index.html", "request.html", "contribute.html", "plugins/pr-review.html"]) {
+      expect(await read(root, `dist/site/${file}`)).toContain("contribute.html");
+    }
+  });
+});
+
 describe("accessibility contracts", () => {
   it("keeps one top-level heading per plugin page by demoting the README", async () => {
     const root = await writeTree(validTree());
