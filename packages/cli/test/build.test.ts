@@ -612,13 +612,19 @@ describe("request page", () => {
     expect(page).toContain("catch (error)");
   });
 
-  it("still validates scenario format before handing off", async () => {
+  it("collects examples as structured pairs and composes the Scenario:/Expected: text itself", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
     expect(page).toContain("Pick at least one role.");
-    expect(page).toContain("scenario\\s*:");
-    expect(page).toContain("expected\\s*:");
+    // The requester fills paired fields; the line convention the generating
+    // agent parses is composed by the page, so it can never be malformed.
+    expect(page).toContain('data-part="scenario"');
+    expect(page).toContain('data-part="expected"');
+    expect(page).toContain('"Scenario: " + pair.scenario');
+    expect(page).toContain('"\\nExpected: " + pair.expected');
+    expect(page).toContain('id="add-example"');
+    expect(page).toContain("Give at least one example");
   });
 });

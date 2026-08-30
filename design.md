@@ -279,6 +279,15 @@ inputs are perceivable, labels above inputs, helper text present, error text
 below. Status messages use `--fg` for progress and `--accent-fg` for errors,
 which clears AA on both backgrounds.
 
+Amended again after the UX audit: the examples field is no longer one free-text
+box with a line convention to learn. It is a list of structured pairs — a
+Scenario field and an Expected result field per example, an outlined ghost
+button to add another, a Remove control on every example past the first, and
+renumbering as examples come and go. The page composes the
+`Scenario:`/`Expected:` text the generating agent parses at hand-off, so the
+format cannot be malformed and validation now speaks about content ("Example 2
+has a scenario but no expected result"), never about syntax.
+
 Amended after this design was written: the token field described here no longer
 exists. The form asks for no credential and hands its answers to GitHub's own
 prefilled issue form, so the status region reports the hand-off rather than an

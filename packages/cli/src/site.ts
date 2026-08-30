@@ -561,10 +561,18 @@ and you stay reachable for questions and get notified when the skill ships.</p>
   <label>What problem should this skill solve?
     <textarea name="problem" required rows="4" placeholder="What goes wrong today, and what should happen instead?"></textarea></label>
 
-  <label>Example scenarios and expected results
-    <textarea name="scenarios" required rows="6" aria-describedby="scenarios-hint" placeholder="Scenario: A PR adds a new form field&#10;Expected: The skill flags the missing label&#10;&#10;Scenario: A PR only touches tests&#10;Expected: The skill says no checklist items apply"></textarea></label>
-  <p class="hint" id="scenarios-hint">One <code>Scenario:</code> line and one <code>Expected:</code> line per example. These become the
-  criteria the generating agent checks its own work against, so be concrete.</p>
+  <fieldset class="examples" aria-describedby="scenarios-hint"><legend>Example scenarios and expected results</legend>
+    <p class="hint" id="scenarios-hint">Each example pairs a situation with what the skill should do about it.
+    These become the criteria the generating agent checks its own work against, so be concrete.</p>
+    <ol id="example-list" class="example-list">
+      <li class="example">
+        <div class="example-bar"><span class="example-n">Example 1</span></div>
+        <label>Scenario<textarea rows="2" data-part="scenario" placeholder="A PR adds a new form field"></textarea></label>
+        <label>Expected result<textarea rows="2" data-part="expected" placeholder="The skill flags the missing label"></textarea></label>
+      </li>
+    </ol>
+    <button type="button" id="add-example" class="ghost">Add another example</button>
+  </fieldset>
 
   <button type="submit">Continue on GitHub</button>
   <p id="status" role="status"></p>
@@ -591,8 +599,54 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   var form = document.getElementById("request");
   var status = document.getElementById("status");
-  var button = form.querySelector("button");
+  var button = form.querySelector('button[type="submit"]');
   var similar = document.getElementById("similar");
+  var exampleList = document.getElementById("example-list");
+  var addExample = document.getElementById("add-example");
+
+  // Structured pairs, composed into "Scenario: … / Expected: …" text at
+  // hand-off: the requester never has to learn the line convention, and the
+  // issue the agent parses still carries exactly that convention.
+  function examples() {
+    return Array.prototype.slice.call(exampleList.querySelectorAll(".example")).map(function (item) {
+      return {
+        scenario: item.querySelector('[data-part="scenario"]').value.trim(),
+        expected: item.querySelector('[data-part="expected"]').value.trim()
+      };
+    });
+  }
+
+  function renumber() {
+    var items = Array.prototype.slice.call(exampleList.querySelectorAll(".example"));
+    items.forEach(function (item, index) {
+      item.querySelector(".example-n").textContent = "Example " + (index + 1);
+      var remove = item.querySelector(".remove");
+      // The first example is the form's floor; only the ones above it detach.
+      if (index === 0) {
+        if (remove) remove.remove();
+      } else if (!remove) {
+        remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "ghost remove";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", function () {
+          item.remove();
+          renumber();
+        });
+        item.querySelector(".example-bar").appendChild(remove);
+      }
+      if (remove && remove.isConnected) remove.setAttribute("aria-label", "Remove example " + (index + 1));
+    });
+  }
+
+  addExample.addEventListener("click", function () {
+    var next = exampleList.querySelector(".example").cloneNode(true);
+    Array.prototype.slice.call(next.querySelectorAll("textarea")).forEach(function (field) { field.value = ""; });
+    exampleList.appendChild(next);
+    renumber();
+    next.querySelector('[data-part="scenario"]').focus();
+  });
+  renumber();
 
   // The catalog, and the same ranker the request bot runs, so a hint here and a
   // "possible duplicate" label two minutes later can never disagree.
@@ -655,20 +709,28 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   function answers() {
     var data = new FormData(form);
+    var pairs = examples().filter(function (pair) { return pair.scenario || pair.expected; });
     return {
       title: String(data.get("title") || ""),
       roles: data.getAll("roles").map(String),
       problem: String(data.get("problem") || ""),
-      scenarios: String(data.get("scenarios") || "")
+      scenarios: pairs.map(function (pair) {
+        return "Scenario: " + pair.scenario + "\\nExpected: " + pair.expected;
+      }).join("\\n\\n")
     };
   }
 
   /** Catch what the generation agent's parser would reject, while it is still fixable. */
   function complain(answer) {
     if (answer.roles.length === 0) return "Pick at least one role.";
-    if (!/^\\s*(?:[-*]\\s*)?scenario\\s*:/im.test(answer.scenarios) ||
-        !/^\\s*(?:[-*]\\s*)?expected\\s*:/im.test(answer.scenarios)) {
-      return "Give at least one example as a \\"Scenario:\\" line followed by an \\"Expected:\\" line.";
+    var pairs = examples();
+    var touched = pairs.filter(function (pair) { return pair.scenario || pair.expected; });
+    if (touched.length === 0) return "Give at least one example: a scenario and its expected result.";
+    for (var index = 0; index < pairs.length; index += 1) {
+      var pair = pairs[index];
+      if (!pair.scenario && !pair.expected) continue;
+      if (!pair.scenario) return "Example " + (index + 1) + " has an expected result but no scenario.";
+      if (!pair.expected) return "Example " + (index + 1) + " has a scenario but no expected result.";
     }
     return null;
   }
@@ -700,7 +762,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     var paste = "Your scenarios were too long to carry in the link, so they are on your clipboard. " +
       "Paste them into \\"Example scenarios and expected results\\" on GitHub.";
     var manual = "Your scenarios were too long to carry in the link, and this browser would not let the " +
-      "page copy them. Copy the scenarios box above yourself and paste it into that field on GitHub.";
+      "page copy them. Copy your examples above yourself and paste them into that field on GitHub.";
     var copied = null;
     try {
       copied = navigator.clipboard.writeText(answer.scenarios);
@@ -1017,6 +1079,19 @@ form input, form textarea, form select {
   border-radius: 0;
 }
 fieldset { margin-top: 1.5rem; padding: 1rem 1.25rem 1.25rem; border: 1px solid var(--line); }
+
+/* Examples: structured pairs, so the Scenario:/Expected: convention is the
+   page's job, never the requester's. */
+.examples .hint { margin: 0 0 1rem; }
+.example-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.example { border: 1px solid var(--line); border-left: 3px solid var(--line-ui); padding: .25rem 1rem 1rem; }
+.example label { margin: .75rem 0 .35rem; }
+.example textarea { resize: vertical; }
+.example-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .75rem; }
+.example-n { font-family: var(--display); text-transform: uppercase; font-size: .6875rem; letter-spacing: .12em; color: var(--muted); }
+.ghost { padding: .45rem .9rem; background: transparent; color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+.ghost:hover { border-color: var(--fg); }
+#add-example { margin-top: 1rem; }
 legend { font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
 label.check { display: inline-flex; align-items: center; gap: .4rem; margin: 0 1.25rem .5rem 0; font-family: var(--body); text-transform: none; letter-spacing: 0; font-size: .9375rem; }
 /* Native checks are too small a target beside 1rem inputs; scale and tint them. */
