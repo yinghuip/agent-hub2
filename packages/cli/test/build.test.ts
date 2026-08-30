@@ -166,7 +166,7 @@ describe("build", () => {
     expect(index.recentlyAdded).toEqual(["flaky-triage"]);
   });
 
-  it("renders a page per plugin and groups the homepage by role", async () => {
+  it("renders a page per plugin and one catalog tile per plugin", async () => {
     const root = await writeTree(
       validTree({
         CODEOWNERS: codeownersFor("pr-review", "story-splitter"),
@@ -185,8 +185,9 @@ describe("build", () => {
     const home = await read(root, "dist/site/index.html");
     expect(home).toContain("Business Analyst");
     expect(home).toContain("Product Owner");
-    // A multi-role plugin appears under each of its roles.
-    expect(home.split("story-splitter").length - 1).toBeGreaterThanOrEqual(2);
+    // A multi-role plugin is one tile carrying both roles, never a card per role.
+    expect(home.match(/data-name="story-splitter"/g)).toHaveLength(1);
+    expect(home).toContain('data-roles="Business Analyst|Product Owner"');
 
     // Role filtering is a control, not just something you can type into search.
     for (const role of ["Developer", "QA", "Business Analyst", "Product Owner"]) {
@@ -257,8 +258,8 @@ describe("catalog shell", () => {
       expect(home).toContain(`<option value="${role}">`);
     }
     expect(home).toContain('aria-pressed="false"');
-    // Sections are role-owned, so picking a role can put the others away.
-    expect(home).toContain('data-role="Business Analyst"');
+    // One sheet of tiles; the role lives on the tile, not on a section.
+    expect(home).toContain('data-roles="Business Analyst"');
     expect(home).toContain("Filter by role");
   });
 
@@ -311,7 +312,7 @@ describe("contribute page", () => {
 
     // Detail pages are not <section>, so the frame has to come from .detail.
     expect(await read(root, "dist/site/styles.css")).toContain(
-      ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }",
+      ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); width: 100%; }",
     );
     for (const file of ["request.html", "requests.html", "contribute.html", "plugins/pr-review.html"]) {
       expect(await read(root, `dist/site/${file}`)).toContain('<article class="detail">');
@@ -349,8 +350,9 @@ describe("open requests", () => {
     expect(page).not.toContain("A snapshot, built");
     expect(page.match(/the open issues on GitHub/g)).toHaveLength(1);
     expect((await readJson(root, "dist/site/index.json")).requests).toBeNull();
-    // A missing number is honest; a zero would be a lie.
-    expect(home).not.toContain("Open requests");
+    // A missing number is honest; a zero would be a lie. The nav still links
+    // the queue page from everywhere, so it is the count that must be absent.
+    expect(home).not.toContain('count-label">Open requests');
     expect(home).not.toContain("Requests in flight");
   });
 
@@ -611,13 +613,19 @@ describe("request page", () => {
     expect(page).toContain("catch (error)");
   });
 
-  it("still validates scenario format before handing off", async () => {
+  it("collects examples as structured pairs and composes the Scenario:/Expected: text itself", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
     expect(page).toContain("Pick at least one role.");
-    expect(page).toContain("scenario\\s*:");
-    expect(page).toContain("expected\\s*:");
+    // The requester fills paired fields; the line convention the generating
+    // agent parses is composed by the page, so it can never be malformed.
+    expect(page).toContain('data-part="scenario"');
+    expect(page).toContain('data-part="expected"');
+    expect(page).toContain('"Scenario: " + pair.scenario');
+    expect(page).toContain('"\\nExpected: " + pair.expected');
+    expect(page).toContain('id="add-example"');
+    expect(page).toContain("Give at least one example");
   });
 });

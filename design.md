@@ -192,8 +192,53 @@ No hand-drawn SVG paths.
 Content well `max-width: 1400px`, gutter `clamp(1rem, 4vw, 3rem)`.
 Tile grid `repeat(auto-fill, minmax(19rem, 1fr))`, gap 1px on a `--line`
 background so tiles read as one ruled sheet rather than floating cards. The
-first tile of each role section spans two columns on `>= 1024px`. That is the
-whole of the asymmetry, which is what `DESIGN_VARIANCE: 6` should buy.
+first tile of the sheet spans two columns on `>= 1024px`. That is the whole of
+the asymmetry, which is what `DESIGN_VARIANCE: 6` should buy.
+
+Amended after a UX audit of the shipped site: the catalog is **one sheet, one
+tile per plugin**. The original per-role sections printed a multi-role plugin
+once under each role, and with a small catalog the page became a wall of the
+same card. Roles now live on the tile (an uppercase micro line under the title)
+and in the rail filter, which hides tiles rather than switching sections. The
+audit's other amendments: the utility nav carries the queue page, marks the
+current page with the red underline, and marks the repository link as external;
+the hero count blocks are links (skills and roles to the catalog, open requests
+to the queue) with a pressed-darker hover fill `--accent-down: #C11D00`;
+section `h2`s step down to `clamp(1.5rem, 1.15rem + 1.3vw, 2.125rem)` so the
+`h1` owns the page; the two-paths CTAs bottom-align across the split; the
+install band gets the same copy button the detail panels have; the detail
+panel's tool caption is gone (the active tab already says it); stage counts on
+the queue page render as an outlined chip, not a subscript numeral; form
+checkboxes are 1.15rem with `accent-color: var(--accent)`; and "Recently added"
+renders only from three entries up, because below that it repeats the catalog
+card for card.
+
+A second audit pass tightened the states and edges. The footer sits at the
+viewport bottom on short pages (flex column on `body`), so the queue page's
+unread state no longer floats over bare ground. The utility nav item for the
+queue reads "Open requests" — the page's own title — instead of sitting next
+to "Request a skill" as a near-duplicate, and on phones the nav is one
+scrollable row in the tab strip's manner rather than a stack of wrapped lines.
+Plugin pages carry a "← Catalog" crumb. The primary action is one recipe
+(`.cta` and the submit button share fill, metrics and the `--accent-down`
+hover). Duplicate-warning links open in a new tab with `rel="noopener"` and
+say so, because that aside invites a look elsewhere and following it must not
+cost the typed request. `#status.error` takes the same accent-ruled aside
+treatment as the duplicate warning, so the form has one error vocabulary. The
+lead tile's two-column span waits for a catalog of three, and the queue page's
+intro speaks of examples, not of the line convention the form no longer shows.
+Deliberately unchanged: the rail keeps its dark surface in both modes (it is
+the reference's signature structure), and tile titles stay uppercase (the
+display treatment is the voice of the whole site).
+
+The last refinement pass: the catalog's
+empty state carries a "Clear search and filter" action instead of being a
+wall. Tile title tooltips list the keywords search also matches, so a match on
+invisible text is explicable. Pages carry og: metadata for link unfurls, the
+utility nav is labelled for assistive tech, and in-page anchor jumps glide
+under prefers-reduced-motion: no-preference only. Accepted as-is with
+rationale: white count labels on the accent fill measure 4.64:1 — AA with
+little margin, monitored, not a failure.
 
 Breakpoints stay `sm 640 / md 768 / lg 1024 / xl 1280 / 2xl 1536`.
 
@@ -214,11 +259,12 @@ the requests band below carries none.
    elements, nothing below the CTA, no trust strip, no scroll cue, top padding
    capped at `pt-24`.
 2. **Recently added, horizontal scroll-snap row.** Breadth without a second
-   grid. Hidden entirely when the list is empty rather than shown as a stub.
-3. **Catalog: rail plus tile grid.** The page's centre of gravity. Role headings
-   are `display-l` with a 2px underrule. Search and role filter compose: both
-   act on tiles, sections hide when they empty out, and a single empty state
-   speaks when nothing matches.
+   grid. Hidden below three entries rather than shown as a stub or an echo of
+   the catalog.
+3. **Catalog: rail plus one tile sheet.** The page's centre of gravity. One
+   "Catalog" heading at `display-l` with a 2px underrule, one tile per plugin,
+   roles as a micro line on the tile. Search and role filter compose: both act
+   on tiles, and a single empty state speaks when nothing matches.
 4. **Install once, inverted full-bleed band.** Near-black, the two marketplace
    commands in mono at `display-m`, one red CTA. This is the page's one moment
    of scale.
@@ -259,6 +305,26 @@ Structurally as-is, restyled: zero radius, `--line-ui` borders on every field so
 inputs are perceivable, labels above inputs, helper text present, error text
 below. Status messages use `--fg` for progress and `--accent-fg` for errors,
 which clears AA on both backgrounds.
+
+Amended again after the UX audit: the examples field is no longer one free-text
+box with a line convention to learn. It is a list of structured pairs — a
+Scenario field and an Expected result field per example, an outlined ghost
+button to add another, a Remove control on every example past the first, and
+renumbering as examples come and go. The page composes the
+`Scenario:`/`Expected:` text the generating agent parses at hand-off, so the
+format cannot be malformed and validation now speaks about content ("Example 2
+has a scenario but no expected result"), never about syntax.
+
+Validation itself speaks in one voice: the form is `novalidate`, so the
+browser's own bubble never competes with the status line, and every fault
+focuses and scrolls to the control it names, marking it `aria-invalid` with an
+accent border that clears on input. "Every field is required" is said once at
+the top rather than discovered failure by failure. The duplicate-skill
+interstitial, which renders beside the title field, scrolls itself into view
+and hands focus to the first match when the submit button a screen below
+raises it. The hand-off consequence is restated at the point of action: a hint
+under the button says GitHub's prefilled form opens in a new tab and nothing
+is filed until Create is pressed there.
 
 Amended after this design was written: the token field described here no longer
 exists. The form asks for no credential and hands its answers to GitHub's own
