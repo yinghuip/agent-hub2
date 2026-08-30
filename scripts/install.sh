@@ -3,13 +3,13 @@
 # directory. The guaranteed fallback when a tool's native marketplace path is
 # unavailable or broken.
 #
-#   curl -fsSL <raw-url>/scripts/install.sh | bash -s -- <plugin> [--tool claude|copilot|codex] [--dest <dir>]
+#   curl -fsSL <raw-url>/scripts/install.sh | bash -s -- <plugin> [--tool claude|copilot|codex|opencode] [--dest <dir>]
 set -euo pipefail
 
 # Kept in step with `repo` in agent-hub.config.json; override for a fork.
 REPO="${AGENT_HUB_REPO:-yinghuip/agent-hub2}"
 usage() {
-  echo "usage: install.sh <plugin> [--tool claude|copilot|codex] [--dest <dir>]"
+  echo "usage: install.sh <plugin> [--tool claude|copilot|codex|opencode] [--dest <dir>]"
   echo "  installs one Agent Hub plugin's skills into the tool's skills directory"
 }
 
@@ -34,7 +34,9 @@ if [ -z "$DEST" ]; then
     claude) DEST="$HOME/.claude/skills" ;;
     copilot) DEST="$HOME/.copilot/skills" ;;
     codex) DEST="$HOME/.codex/skills" ;;
-    *) echo "unknown tool: $TOOL (expected claude, copilot or codex)" >&2; exit 2 ;;
+    # OpenCode keeps global config under XDG-style ~/.config, not a dotdir in $HOME.
+    opencode) DEST="$HOME/.config/opencode/skills" ;;
+    *) echo "unknown tool: $TOOL (expected claude, copilot, codex or opencode)" >&2; exit 2 ;;
   esac
 fi
 

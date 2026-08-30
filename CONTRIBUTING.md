@@ -47,7 +47,7 @@ The full set of permitted top-level entries is therefore: `plugin.yaml` (or
 `plugin.yml`), `README.md`, `mcp.json`, `skills/`, `LICENSE`, `CHANGELOG.md`,
 and the generated `plugin.json` / `.claude-plugin/`. Anything else fails
 `portable-subset`.
-That rule is what makes "works in all three tools" literally true; without it a
+That rule is what makes "works in every supported tool" literally true; without it a
 Copilot user can install something their tool silently ignores.
 
 Only the top level is restricted, so a skill may carry anything it needs beside

@@ -19,7 +19,7 @@ export type CatalogPlugin = PluginMetadata & {
   lastUpdated: string;
   addedAt: string;
   stale: boolean;
-  install: Record<"claudeCode" | "copilot" | "codex" | "universal", string>;
+  install: Record<"claudeCode" | "copilot" | "codex" | "opencode" | "universal", string>;
 };
 
 export type Analysis = {
@@ -116,6 +116,7 @@ export function installCommands(config: HubConfig, plugin: string): CatalogPlugi
     // Copilot CLI reads Claude's marketplace format natively, so the commands match.
     copilot: slashCommands,
     codex: `curl -fsSL ${script} | bash -s -- ${plugin} --tool codex`,
+    opencode: `curl -fsSL ${script} | bash -s -- ${plugin} --tool opencode`,
     universal: `curl -fsSL ${script} | bash -s -- ${plugin}`,
   };
 }

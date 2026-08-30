@@ -2,7 +2,7 @@
 
 The internal marketplace for agent skills. One private monorepo holds every
 plugin; an access-controlled GitHub Pages catalog lets anyone browse, search and
-install them in **Claude Code**, **GitHub Copilot** or **OpenAI Codex**.
+install them in **Claude Code**, **GitHub Copilot**, **OpenAI Codex** or **OpenCode**.
 
 There is no backend service. GitHub Actions is the pipeline, GitHub Pages is the
 site, GitHub Issues is the request queue.

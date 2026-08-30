@@ -16,7 +16,8 @@ GitHub Pages is the catalog. There is no backend service anywhere.
 - **Canonical metadata** — `plugins/<name>/plugin.yaml`, the single
   hand-authored description of a plugin. Everything else is generated.
 - **Generated manifest** — `plugin.json` (agent-plugins.org v1.0.0, read by
-  Copilot and Codex) and `.claude-plugin/plugin.json` (Claude Code). Both come
+  Copilot and Codex) and `.claude-plugin/plugin.json` (Claude Code). OpenCode
+  reads the shipped `SKILL.md` skills directly and needs no manifest. Both come
   from the canonical metadata; hand-editing them is `manifest-drift`.
 - **Marketplace file** — the repo-level index of plugins, one per tool family:
   `.claude-plugin/marketplace.json` and `.github/copilot/marketplace.json`.
