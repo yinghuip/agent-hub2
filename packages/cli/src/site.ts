@@ -597,9 +597,9 @@ and you stay reachable for questions and get notified when the skill ships.</p>
     <button type="button" id="add-example" class="ghost">Add another example</button>
   </fieldset>
 
-  <button type="submit">Continue on GitHub</button>
-  <p class="hint">Opens GitHub's issue form in a new tab, prefilled with these answers. You check it over and
-  press Create there; nothing is filed until you do.</p>
+  <button type="submit">Review &amp; submit on GitHub</button>
+  <p class="hint">Opens GitHub's issue form in a new tab, prefilled with these answers. One click remains
+  there &mdash; press Submit new issue once you've checked it over; nothing is filed until you do.</p>
   <p id="status" role="status"></p>
 </form>
 
@@ -692,7 +692,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   function forget() {
     acknowledged = false;
-    button.textContent = "Continue on GitHub";
+    button.textContent = "Review & submit on GitHub";
     similar.hidden = true;
     similar.innerHTML = "";
   }
@@ -735,6 +735,12 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   function say(message, kind) {
     status.textContent = message;
+    status.className = kind || "";
+  }
+
+  // Build-authored markup only; anything variable goes through esc().
+  function sayHtml(html, kind) {
+    status.innerHTML = html;
     status.className = kind || "";
   }
 
@@ -825,31 +831,72 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
    * Scenarios is the only answer long enough to blow the URL budget, so carry
    * everything else in the link and put that one on the clipboard.
    */
+  function reopen(url) {
+    return '<p class="hint">Didn\\'t see the tab? ' + link(url, "Re-open your prefilled request") + "</p>";
+  }
+
+  function almostDone(url) {
+    return "<strong>Almost done &mdash; finish on GitHub.</strong> We've opened GitHub in a new tab with " +
+      "your request pre-filled. Check it over and press <strong>Submit new issue</strong> there." +
+      reopen(url);
+  }
+
+  /** A user-clicked link is never popup-blocked, so it is the escape hatch. */
+  function blocked(url) {
+    sayHtml("This browser blocked the tab. " + link(url, "Open your request on GitHub") +
+      " instead &mdash; your answers are still here.", "error");
+  }
+
   function handOverLongScenarios(answer) {
-    var paste = "Your scenarios were too long to carry in the link, so they are on your clipboard. " +
-      "Paste them into \\"Example scenarios and expected results\\" on GitHub.";
+    var url = issueUrl(answer, "scenarios");
+    var paste = "<p>Your scenarios were too long to carry in the link, so they are on your clipboard. " +
+      "Paste them into &quot;Example scenarios and expected results&quot; on GitHub. " +
+      '<button type="button" id="recopy" class="ghost">Copy scenarios again</button></p>';
     var manual = "Your scenarios were too long to carry in the link, and this browser would not let the " +
-      "page copy them. Copy your examples above yourself and paste them into that field on GitHub.";
-    var copied = null;
-    try {
-      copied = navigator.clipboard.writeText(answer.scenarios);
-    } catch (error) {
-      copied = null;
+      "page copy them. Copy your examples above yourself and paste them into that field on GitHub." +
+      reopen(url);
+    function copyScenarios() {
+      try {
+        return navigator.clipboard.writeText(answer.scenarios);
+      } catch (error) {
+        return null;
+      }
     }
+    var opened = window.open(url, "_blank", "noopener");
+    var copied = copyScenarios();
     if (copied && copied.then) {
-      copied.then(function () { say(paste); }).catch(function () { say(manual, "error"); });
+      copied.then(function () {
+        // The clipboard settles after the popup verdict; do not paper over a
+        // blocked tab with a success panel.
+        if (!opened) { blocked(url); return; }
+        sayHtml(almostDone(url) + paste, "handoff");
+        var recopy = document.getElementById("recopy");
+        if (recopy) recopy.addEventListener("click", copyScenarios);
+      }).catch(function () { manualOrBlocked(); });
     } else {
-      say(manual, "error");
+      manualOrBlocked();
     }
-    window.open(issueUrl(answer, "scenarios"), "_blank", "noopener");
+    // Both faults at once: the blocked-tab link already carries every answer
+    // except scenarios, so lead with it and keep the copy-by-hand instruction.
+    function manualOrBlocked() {
+      if (opened) { sayHtml(manual, "error"); return; }
+      sayHtml("This browser blocked the tab. " + link(url, "Open your request on GitHub") +
+        " instead. " + manual, "error");
+    }
   }
 
   function handOff(answer) {
     var url = issueUrl(answer, null);
     if (url.length > URL_BUDGET) { handOverLongScenarios(answer); return; }
-    window.open(url, "_blank", "noopener");
-    say("Opened on GitHub in a new tab. Check it over and press Create. Your answers are still here.");
+    if (!window.open(url, "_blank", "noopener")) { blocked(url); return; }
+    sayHtml(almostDone(url), "handoff");
   }
+
+  // The panel talks about a hand-off that has happened; new typing starts a new
+  // request, so clear it back to neutral.
+  form.addEventListener("input", function () {
+    if (status.className === "handoff") say("");
+  });
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -864,8 +911,8 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
       if (matches.length > 0) {
         acknowledged = true;
         interstitial(matches);
-        button.textContent = "Continue anyway";
-        say("Look at these first. The button now takes your request to GitHub as written.");
+        button.textContent = "Send to GitHub anyway";
+        say("Look these over first. If none of them fit, the button now sends your request straight to GitHub.");
         // The warning renders beside the title field, a screen away from the
         // button that raised it: go there, or it was never said.
         similar.scrollIntoView({ block: "center" });
@@ -1205,6 +1252,10 @@ button[disabled] { opacity: .6; cursor: progress; }
 #status { margin-top: 1.25rem; max-width: 68ch; }
 /* Errors share the duplicate warning's vocabulary: an accent-ruled aside. */
 #status.error { color: var(--accent-fg); padding: .75rem 1.25rem; background: var(--surface); border-left: 3px solid var(--accent); }
+/* The hand-off panel: same aside shape, but a calm rule — nothing is wrong. */
+#status.handoff { padding: .75rem 1.25rem; background: var(--surface); border-left: 3px solid var(--line-ui); }
+#status.handoff p { margin: .5rem 0 0; }
+#status.handoff .ghost { margin-left: .5rem; }
 /* The fault the status names, marked at the field itself. Cleared on input. */
 form [aria-invalid="true"] { border-color: var(--accent); }
 #no-results { color: var(--muted); }
