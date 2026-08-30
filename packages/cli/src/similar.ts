@@ -132,7 +132,16 @@ export type OpenIssue = {
   body?: string | null;
   html_url?: string;
   pull_request?: unknown;
+  /**
+   * Objects from the REST endpoint, but bare strings in a hand-written file.
+   * Both shapes are read; see `labelNames` in queue.ts.
+   */
+  labels?: (string | { name?: string })[];
+  created_at?: string;
 };
+
+/** The issues endpoint returns pull requests too; they are never requests. */
+export const isRequestIssue = (issue: OpenIssue) => !issue.pull_request;
 
 /**
  * Reduce an open request to the text it is scored on: its title, plus the
@@ -162,7 +171,7 @@ export const PROBLEM_HEADING = REQUEST_SECTIONS.find((section) => section.field 
 export function requestCandidates(issues: OpenIssue[], exclude?: number): SimilarCandidate[] {
   const candidates: SimilarCandidate[] = [];
   for (const issue of issues) {
-    if (issue.pull_request || issue.number === exclude) continue;
+    if (!isRequestIssue(issue) || issue.number === exclude) continue;
     candidates.push({
       kind: "request",
       ref: String(issue.number),

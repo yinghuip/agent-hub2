@@ -3,14 +3,23 @@ name: Publish catalog
 on:
   push:
     branches: [main]
+  # The catalog lists the open request queue, and that queue is issue state, so
+  # it is issue events that make the page true again.
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 # Access control lives in the repo's Pages settings: set visibility to
 # "Private" (GitHub Enterprise) so only org members can reach the catalog.
+# That setting matters more now: the catalog republishes text colleagues wrote
+# in issues, not only what has been through code review.
 permissions:
   contents: read
   pages: write
   id-token: write
+  # Declaring this block sets every unlisted scope to none, so reading the
+  # queue has to be asked for.
+  issues: read
 
 concurrency:
   group: pages
@@ -18,6 +27,14 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    # An issue that is not a request changes nothing on the site. The second
+    # clause catches a request having `skill-request` itself removed: by then
+    # `issue.labels` is the list after the removal, so only `label.name` still
+    # says the event was about the queue.
+    if: >-
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'skill-request') ||
+      github.event.label.name == 'skill-request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -31,7 +48,29 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node packages/cli/bin/agent-hub.js build
+
+      # The catalog is generated from the filesystem; the queue is the one thing
+      # it cannot read for itself, so it arrives as a file. The CLI never makes
+      # an HTTP call.
+      #
+      # A failed fetch deletes the file rather than degrading to `[]` the way
+      # check-duplicate.yml does. There, an empty list costs the check a few
+      # candidates; here it would publish "no open requests" when the truth is
+      # "the fetch failed". No file means the page says it did not read the queue.
+      - name: Read the open request queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues?state=open&per_page=100&labels=skill-request" \
+            > /tmp/open.json || rm -f /tmp/open.json
+
+      - name: Build the catalog
+        run: |
+          if [ -f /tmp/open.json ]; then
+            node packages/cli/bin/agent-hub.js build --issues /tmp/open.json
+          else
+            node packages/cli/bin/agent-hub.js build
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

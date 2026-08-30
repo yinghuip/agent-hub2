@@ -1,6 +1,7 @@
 import { roleIcon } from "./assets.ts";
 import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
+import type { QueuedRequest, RequestStage } from "./queue.ts";
 import { REQUEST_SECTIONS } from "./request.ts";
 import { pluginCandidates, rankSimilar, requestText } from "./similar.ts";
 import { ROLES } from "./roles.ts";
@@ -104,7 +105,7 @@ function rail(populatedRoles: readonly string[]): string {
 }
 
 function homePage(analysis: Analysis, config: HubConfig): string {
-  const { plugins, recentlyAdded } = analysis;
+  const { plugins, recentlyAdded, requests } = analysis;
   const populatedRoles = ROLES.filter((role) => plugins.some((plugin) => plugin.roles.includes(role)));
   const recent = recentlyAdded
     .map((name) => plugins.find((plugin) => plugin.name === name))
@@ -135,6 +136,12 @@ function homePage(analysis: Analysis, config: HubConfig): string {
     ${
       newest
         ? `<div><span class="count count-date">${formatDate(newest.addedAt)}</span><span class="count-label">Newest</span></div>`
+        : ""
+    }
+    ${
+      // Absent when the queue was not read: a missing number is honest, a 0 is a lie.
+      requests
+        ? `<div><span class="count">${requests.length}</span><span class="count-label">Open requests</span></div>`
         : ""
     }
   </aside>
@@ -185,6 +192,29 @@ ${
     </article>
   </div>
 </section>
+
+${
+  // Hidden when the queue is empty or was never read, the same rule "Recently
+  // added" follows: an empty section is a stub, not information.
+  requests && requests.length
+    ? `<section class="queue">
+  <h2>Requests in flight</h2>
+  <p class="desc">${
+    requests.length === 1 ? "One skill has been asked for" : `${requests.length} skills have been asked for`
+  } and not shipped yet. Check here before writing a request of your own.</p>
+  <ul class="queue-list">${requests
+    .slice(0, 4)
+    .map(
+      (request) => `<li class="request request-row">
+    <a href="${escape(request.url)}">${escape(request.title)}</a>
+    <span class="chip">${escape(STAGE_LABELS[request.stage])}</span>
+  </li>`,
+    )
+    .join("\n")}</ul>
+  <a class="cta" href="./requests.html">See all ${requests.length === 1 ? "1 request" : `${requests.length} requests`}</a>
+</section>`
+    : ""
+}
 
 <script id="catalog" type="application/json">${embedJson(catalogIndex(analysis, config))}</script>
 <script>
@@ -388,11 +418,120 @@ function contributePage(config: HubConfig, contributingHtml: string | null): str
   return layout(config, `Contribute a skill - ${config.displayName}`, body, 0);
 }
 
+/** Display order: the stage waiting on a human first. */
+const STAGES: { stage: RequestStage; heading: string; chip: string; blurb: string }[] = [
+  {
+    stage: "triage",
+    heading: "Needs triage",
+    chip: "needs triage",
+    blurb: "Waiting on a platform reviewer to decide. Add your own scenarios to one rather than filing a second.",
+  },
+  {
+    stage: "generating",
+    heading: "Approved and generating",
+    chip: "generating",
+    blurb: "An agent is drafting these now. Each lands as a pull request with the requester as a reviewer.",
+  },
+  {
+    stage: "duplicate",
+    heading: "Possible duplicate",
+    chip: "possible duplicate",
+    blurb: "An existing skill or another open request may already cover these. Nothing is closed automatically.",
+  },
+];
+
+/** The chip the home band prints, from the same table the page headings come from. */
+const STAGE_LABELS = Object.fromEntries(STAGES.map(({ stage, chip }) => [stage, chip])) as Record<
+  RequestStage,
+  string
+>;
+
+/** The live queue on GitHub, which is always the source of truth for a snapshot. */
+function queueSearchUrl(config: HubConfig): string {
+  return `https://github.com/${config.repo}/issues?q=${encodeURIComponent("is:issue is:open label:skill-request")}`;
+}
+
+/**
+ * One open request. Every field is issue text a colleague wrote, so every field
+ * goes through `escape` and none of it goes through `marked` — a rendered issue
+ * body would be stored HTML from anyone who can open an issue.
+ */
+function requestItem(request: QueuedRequest): string {
+  return `<li class="request">
+  <h3><a href="${escape(request.url)}">${escape(request.title)}</a></h3>
+  ${request.roles.length ? `<p class="request-roles">${escape(request.roles.join(" · "))}</p>` : ""}
+  ${request.problem ? `<p class="desc">${escape(request.problem)}</p>` : ""}
+  <p class="request-meta">#${escape(String(request.number))}${
+    request.openedAt ? `, opened ${escape(formatDate(request.openedAt))}` : ""
+  }</p>
+</li>`;
+}
+
+/**
+ * The open request queue.
+ *
+ * Always emitted, like the contribute path: a route that exists on some builds
+ * only makes every link to it conditional, and 404s a local preview. What
+ * changes is what it says — and "we did not read the queue" is a different
+ * sentence from "the queue is empty", because a build without a token cannot
+ * tell the difference and must not guess.
+ */
+function openRequestsPage(analysis: Analysis, config: HubConfig): string {
+  const requests = analysis.requests;
+  const search = escape(queueSearchUrl(config));
+  const live = `<a href="${search}">the open issues on GitHub</a>`;
+
+  let main: string;
+  if (requests === null) {
+    main = `<p>This build did not read the request queue, so there is nothing to list here. The catalog is
+  generated without a token; the published site fetches the queue in its workflow.</p>
+  <p>Browse ${live} instead — that is the live list either way.</p>`;
+  } else if (requests.length === 0) {
+    main = `<p>No open requests right now. Every request that has been asked for has either shipped as a skill
+  or been closed.</p>
+  <p><a class="cta" href="./request.html">Request a skill</a></p>`;
+  } else {
+    const sections = STAGES.map(({ stage, heading, blurb }) => {
+      const inStage = requests.filter((request) => request.stage === stage);
+      if (inStage.length === 0) return "";
+      // The nbsp keeps the count with the last word, so a heading that wraps on
+      // a phone does not strand the number on a line of its own.
+      return `<section class="stage">
+  <h2>${escape(heading)}&nbsp;<span class="stage-count">${inStage.length}</span></h2>
+  <p class="hint">${escape(blurb)}</p>
+  <ul class="queue-list">${inStage.map(requestItem).join("\n")}</ul>
+</section>`;
+    })
+      .filter(Boolean)
+      .join("\n");
+    main = `<p>${requests.length === 1 ? "One request is" : `${requests.length} requests are`} open. Adding your
+  scenarios to one that already exists beats filing a second — the generating agent turns every
+  <code>Scenario:</code>/<code>Expected:</code> pair into an eval.</p>
+${sections}`;
+  }
+
+  const body = `<article class="detail">
+  <header class="detail-head">
+    <h1>Open requests</h1>
+    <p class="lede">What colleagues have asked for and where each one has got to. Stages come from the issue's
+    own labels, so this page and GitHub can never disagree about them.</p>
+  </header>
+  ${main}
+  ${
+    // Only a build that read the queue has a snapshot to date. The unread state
+    // has already said so, and already linked the live list, in `main`.
+    requests === null
+      ? ""
+      : `<p class="hint">A snapshot, built ${escape(formatDate(analysis.now.toISOString()))} and rebuilt whenever
+  a request is opened, edited, labelled or closed. For the live list, see ${live}.</p>`
+  }
+</article>`;
+  return layout(config, `Open requests - ${config.displayName}`, body, 0);
+}
+
 function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number): string {
   const repo = JSON.stringify(config.repo);
-  const openRequests = JSON.stringify(
-    `https://github.com/${config.repo}/issues?q=${encodeURIComponent("is:issue is:open label:skill-request")}`,
-  );
+  const openRequests = JSON.stringify("./requests.html");
   const body = `<article class="detail">
 <h1>Request a skill</h1>
 <p class="lede">Describe what you need in plain language. This page checks your answers, then hands them to
@@ -436,8 +575,8 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
   // GitHub answers 414 once a prefill URL passes the server's limit, so stay
   // well under it and hand the overflow to the clipboard instead.
   var URL_BUDGET = 6000;
-  // Requests still in triage are not in the catalog, and with no token this page
-  // cannot read them. It points at them instead of pretending they do not exist.
+  // The ranker below sees the catalog only — a request in triage is not a
+  // published skill. The queue has a page of its own, so point at that.
   var OPEN_REQUESTS = ${openRequests};
 
   var form = document.getElementById("request");
@@ -496,7 +635,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     });
     show('<p class="similar-lead">Some of this may already exist</p><ul>' + items.join("") + "</ul>" +
       '<p class="hint">Requests still waiting on triage are not in this list. ' +
-      '<a href="' + esc(OPEN_REQUESTS) + '" target="_blank" rel="noopener">Check the open ones</a> too.</p>');
+      '<a href="' + esc(OPEN_REQUESTS) + '">See the open requests</a> too.</p>');
   }
 
   function say(message, kind) {
@@ -730,7 +869,7 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 /* Recently added: a reel, so it is not a second grid. */
 .reel { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(19rem, 22rem); justify-content: start; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
 .reel .tile { scroll-snap-align: start; }
-.recent h2, .role h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
+.recent h2, .role h2, .queue h2, .stage h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
 
 /* Catalog: rail plus one ruled sheet of tiles. */
 .catalog { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); gap: clamp(1.5rem, 3vw, 3rem); align-items: start; }
@@ -771,7 +910,24 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding-top: 1rem; border-top: 1px solid var(--line); }
 .strip dt { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); }
 .strip dd { margin: .25rem 0 0; font-size: .8125rem; }
-.stale { display: inline-block; margin-left: .35rem; padding: 0 .35rem; border: 1px solid var(--line-ui); font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .1em; color: var(--muted); }
+.stale, .chip { display: inline-block; margin-left: .35rem; padding: 0 .35rem; border: 1px solid var(--line-ui); font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .1em; color: var(--muted); }
+
+/* Open requests: a ruled list, so it is neither a grid nor a reel. Stage chips
+   stay neutral — the one accent is reserved for interactive moments. */
+.queue-list { list-style: none; margin: 1.5rem 0 0; padding: 0; border-top: 1px solid var(--line); }
+.request { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.request h3 { font-size: 1.0625rem; }
+.request h3 a, .request-row a { color: var(--fg); text-decoration: none; }
+.request h3 a:hover, .request-row a:hover { color: var(--accent-fg); }
+.request .desc { margin: .5rem 0 0; max-width: 68ch; }
+.request-roles { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); margin: .35rem 0 0; }
+.request-meta { font-size: .8125rem; color: var(--muted); margin: .5rem 0 0; }
+.request-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.chip { margin-left: 0; white-space: nowrap; }
+.stage-count { font-size: .45em; color: var(--muted); letter-spacing: .06em; }
+.stage { padding: 0 0 clamp(1.5rem, 3vw, 2.5rem); max-width: none; }
+.stage .hint { margin: -1rem 0 0; }
+.queue .cta { margin-top: 1.5rem; }
 
 /* Inverted bands: the page's two moments of scale. */
 .invert { background: var(--invert-bg); color: var(--invert-fg); max-width: none; }
@@ -906,6 +1062,8 @@ export function generateSite(analysis: Analysis, config: HubConfig): Map<string,
   files.set("dist/site/index.json", `${JSON.stringify(catalogIndex(analysis, config), null, 2)}\n`);
   files.set("dist/site/index.html", homePage(analysis, config));
   files.set("dist/site/request.html", requestPage(config, analysis.plugins, config.similarityFloor));
+  // Always emitted, whether or not this build read the queue; see openRequestsPage.
+  files.set("dist/site/requests.html", openRequestsPage(analysis, config));
   // Always emitted: the contribute path exists whether or not a guide file does.
   files.set("dist/site/contribute.html", contributePage(config, analysis.contributingHtml));
   files.set("dist/site/styles.css", STYLES);

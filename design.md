@@ -201,9 +201,10 @@ Breakpoints stay `sm 640 / md 768 / lg 1024 / xl 1280 / 2xl 1536`.
 
 ### 7.1 Homepage
 
-Five sections plus footer. Layout families are all different, so no family
-repeats and the zigzag cap is not in play. Eyebrow budget is `ceil(5 / 3) = 2`,
-and two are spent: one in the hero, one on the two-paths section.
+Six sections plus footer. Layout families are all different, so no family
+repeats and the zigzag cap is not in play. Eyebrow budget is `ceil(6 / 3) = 2`,
+and two are spent: one in the hero, one on the two-paths section — which is why
+the requests band below carries none.
 
 1. **Hero, asymmetric split.** Left: eyebrow, headline (2 lines max), subtext
    (20 words max), search field. Right: a red block carrying the live counts
@@ -222,7 +223,13 @@ and two are spent: one in the hero, one on the two-paths section.
 5. **Two paths, 2-up asymmetric split.** Contribute a plugin (60%) and request
    one (40%). Not three equal cards. Each path gets one CTA, and the two labels
    are distinct intents, so the duplicate-intent rule holds.
-6. **Footer, inverted.** Repo link, request link, the generator line.
+6. **Requests in flight, ruled list.** Directly after the two paths, because
+   that is the moment a reader wonders whether someone has already asked. Up to
+   four open requests, one line each, with a neutral stage chip and a link to
+   the full queue. No eyebrow (the budget is spent) and not inverted (both
+   inverted bands are already claimed). Hidden entirely when the queue is empty
+   or was never read, the same rule "Recently added" follows.
+7. **Footer, inverted.** Repo link, request link, the generator line.
 
 Two inverted bands, both deliberate, both at section scale, both using the same
 token set flipped. Page theme lock holds: the page follows
@@ -255,6 +262,29 @@ Amended after this design was written: the token field described here no longer
 exists. The form asks for no credential and hands its answers to GitHub's own
 prefilled issue form, so the status region reports the hand-off rather than an
 API result. The styling contract above is unchanged.
+
+### 7.4 Open requests
+
+The queue page, `requests.html`. A `.detail` frame like the other secondary
+pages, then one ruled list per stage in the order **Needs triage**, **Approved
+and generating**, **Possible duplicate** — the stage waiting on a human first.
+Stage headings take the same 2px underrule as role headings. An empty stage is
+omitted rather than shown at zero.
+
+Stage chips are the outlined neutral label already used for **Stale**, not a
+colour. The colour lock holds: one accent, reserved for interactive moments, so
+status is carried by neutral treatment rather than a second hue. A red
+"generating" chip would read as an alert and spend the accent on something
+nobody can click.
+
+Each entry is a heading link, an uppercase roles line in display type, the
+problem statement as plain text, and `#number` with the open date. Issue text is
+escaped and never rendered as markdown — this is the one page whose content has
+not been through code review.
+
+Two states other than the list, and they say different things: *"this build did
+not read the queue"* when there was no token, and *"no open requests right now"*
+when there was one and the queue was empty. The page carries no JavaScript.
 
 ## 8. Motion
 

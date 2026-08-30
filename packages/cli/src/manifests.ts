@@ -78,6 +78,8 @@ export function catalogIndex(analysis: Analysis, config: HubConfig) {
     },
     roles: [...ROLES],
     recentlyAdded: analysis.recentlyAdded,
+    /** null means the build did not read the queue; [] means it read an empty one. */
+    requests: analysis.requests,
     plugins: analysis.plugins,
   };
 }
