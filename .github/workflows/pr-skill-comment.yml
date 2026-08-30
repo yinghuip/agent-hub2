@@ -1,0 +1,73 @@
+name: Comment skill review on a PR
+
+# The write half of pr-skill-check.yml. That gate runs the PR's own code, so
+# it gets no write token; this workflow runs only trusted code from main,
+# never checks out the PR, and turns the gate's artifact into one comment —
+# edited in place, like check-duplicate.yml's — plus the labels the PR earned.
+on:
+  workflow_run:
+    workflows: ["Check skills and plugins on a PR"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  actions: read # to download the gate's artifact
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr-skill-review
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Post the report and sync the labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- agent-hub:pr-skill-review -->';
+            // Only labels this workflow owns are added or removed; whatever a
+            // human put on the PR stays untouched.
+            const managed = ['new-skill', 'new-plugin', 'possible-duplicate'];
+
+            const pr = parseInt(fs.readFileSync('pr-number.txt', 'utf8').trim(), 10);
+            const report = fs.readFileSync('report.md', 'utf8');
+            const wanted = fs.existsSync('labels.txt')
+              ? fs.readFileSync('labels.txt', 'utf8').split('\n').filter(Boolean)
+              : [];
+
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+
+            const current = await github.paginate(github.rest.issues.listLabelsOnIssue,
+              { ...repo, issue_number: pr, per_page: 100 });
+            const currentManaged = current.map(l => l.name).filter(n => managed.includes(n));
+
+            const toAdd = wanted.filter(n => !currentManaged.includes(n));
+            if (toAdd.length) {
+              // A missing label is worth a warning, not a failed comment run.
+              try {
+                await github.rest.issues.addLabels({ ...repo, issue_number: pr, labels: toAdd });
+              } catch (e) {
+                core.warning(`could not add labels ${toAdd.join(', ')}: ${e.message}`);
+              }
+            }
+            for (const name of currentManaged.filter(n => !wanted.includes(n))) {
+              await github.rest.issues.removeLabel({ ...repo, issue_number: pr, name })
+                .catch(e => core.warning(`could not remove label ${name}: ${e.message}`));
+            }
+
+            // One comment per PR, edited in place, so a re-push replaces the
+            // verdict instead of stacking a new one under a stale one.
+            const comments = await github.paginate(github.rest.issues.listComments,
+              { ...repo, issue_number: pr, per_page: 100 });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ ...repo, comment_id: existing.id, body: report });
+            } else {
+              await github.rest.issues.createComment({ ...repo, issue_number: pr, body: report });
+            }
