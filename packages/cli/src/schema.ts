@@ -40,6 +40,13 @@ export const configSchema = z
     approvalLabel: z.string().min(1).default("approved-for-generation"),
     /** `ownerTeam` for generated plugins; requesters are not asked for one. */
     defaultOwnerTeam: z.string().min(1).default("platform"),
+    /**
+     * How alike two skills must read before the catalog and the request bot
+     * call them possible duplicates. A Dice coefficient over token sets, so a
+     * long problem statement dilutes the score: 0.3 catches a paraphrase,
+     * higher than ~0.5 catches only near-identical wording.
+     */
+    similarityFloor: z.number().min(0).max(1).default(0.3),
     /** GitHub logins/teams added as required reviewers on generated PRs. */
     platformReviewers: z.array(z.string().min(1)).default([]),
   })

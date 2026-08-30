@@ -1,7 +1,7 @@
 import { readFile, readdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { build, renderRequestIssue } from "../src/index.ts";
+import { build, rankSimilar } from "../src/index.ts";
 import { CONFIG, codeownersFor, pluginYaml, read, readJson, validTree, writeTree } from "./helpers.ts";
 
 const NOW = new Date("2025-06-01T00:00:00Z");
@@ -401,6 +401,33 @@ describe("request page", () => {
     for (const role of ["Developer", "QA", "Business Analyst", "Scrum Master", "UX Designer", "General"]) {
       expect(page).toContain(`value="${role}"`);
     }
+  });
+
+  it("warns about an existing skill with the same ranker the request bot runs", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    // Embedded, not reimplemented: a hint here and a "possible duplicate" label
+    // minutes later must never disagree.
+    expect(page).toContain(rankSimilar.toString());
+    expect(page).toContain("Reviews pull requests against the team checklist.");
+    expect(page).toContain("/plugin install pr-review@agent-hub");
+    expect(page).toContain("var FLOOR = 0.3");
+    // Advisory only: the request still goes through.
+    expect(page).toContain("Continue anyway");
+  });
+
+  // Open requests are not in the catalog, and with no token the page cannot read
+  // them, so it must point at them rather than imply the list is complete.
+  it("points at open requests it cannot read instead of ignoring them", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain("OPEN_REQUESTS");
+    expect(page).toContain("label%3Askill-request");
+    expect(page).toContain("Requests still waiting on triage are not in this list.");
   });
 
   it("carries long scenarios on the clipboard rather than blowing the URL limit", async () => {

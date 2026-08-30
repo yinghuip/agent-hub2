@@ -2,6 +2,7 @@ import { roleIcon } from "./assets.ts";
 import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
 import { REQUEST_SECTIONS } from "./request.ts";
+import { pluginCandidates, rankSimilar, requestText } from "./similar.ts";
 import { ROLES } from "./roles.ts";
 import type { HubConfig } from "./schema.ts";
 
@@ -387,8 +388,11 @@ function contributePage(config: HubConfig, contributingHtml: string | null): str
   return layout(config, `Contribute a skill - ${config.displayName}`, body, 0);
 }
 
-function requestPage(config: HubConfig): string {
+function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number): string {
   const repo = JSON.stringify(config.repo);
+  const openRequests = JSON.stringify(
+    `https://github.com/${config.repo}/issues?q=${encodeURIComponent("is:issue is:open label:skill-request")}`,
+  );
   const body = `<article class="detail">
 <h1>Request a skill</h1>
 <p class="lede">Describe what you need in plain language. This page checks your answers, then hands them to
@@ -396,7 +400,8 @@ GitHub's own request form, so the issue opens under <strong>your own</strong> ac
 and you stay reachable for questions and get notified when the skill ships.</p>
 
 <form id="request">
-  <label>Skill title<input name="title" required placeholder="PR review checklist"></label>
+  <label>Skill title<input name="title" required placeholder="PR review checklist" autocomplete="off"></label>
+  <div id="similar" role="status" hidden></div>
 
   <fieldset aria-required="true"><legend>Which roles is this for?</legend>
     ${ROLES.map(
@@ -431,9 +436,68 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
   // GitHub answers 414 once a prefill URL passes the server's limit, so stay
   // well under it and hand the overflow to the clipboard instead.
   var URL_BUDGET = 6000;
+  // Requests still in triage are not in the catalog, and with no token this page
+  // cannot read them. It points at them instead of pretending they do not exist.
+  var OPEN_REQUESTS = ${openRequests};
 
   var form = document.getElementById("request");
   var status = document.getElementById("status");
+  var button = form.querySelector("button");
+  var similar = document.getElementById("similar");
+
+  // The catalog, and the same ranker the request bot runs, so a hint here and a
+  // "possible duplicate" label two minutes later can never disagree.
+  var CANDIDATES = ${embedJson(pluginCandidates(plugins, "."))};
+  var FLOOR = ${floor};
+  var rankSimilar = ${rankSimilar.toString()};
+  var requestText = ${requestText.toString()};
+  var acknowledged = false;
+
+  function esc(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function show(html) {
+    similar.innerHTML = html;
+    similar.hidden = false;
+  }
+
+  function forget() {
+    acknowledged = false;
+    button.textContent = "Continue on GitHub";
+    similar.hidden = true;
+    similar.innerHTML = "";
+  }
+
+  /** While typing: the single closest skill, with the command that installs it. */
+  function hint(query) {
+    var matches = rankSimilar(query, CANDIDATES, FLOOR, 1);
+    if (matches.length === 0) { similar.hidden = true; similar.innerHTML = ""; return; }
+    var match = matches[0];
+    show('<p class="similar-lead">This may already exist</p>' +
+      '<p><a href="' + esc(match.url) + '">' + esc(match.name) + "</a> — " + esc(match.description) + "</p>" +
+      "<pre>" + esc(match.install.claudeCode) + "</pre>" +
+      '<p class="hint"><a href="' + esc(match.url) + '">Read what it does</a> before writing this one out.</p>');
+  }
+
+  form.elements.title.addEventListener("input", function () {
+    hint(requestText(form.elements.title.value, ""));
+  });
+  // The paraphrase usually lives in the problem statement, so score again once
+  // it is written — on blur, not mid-sentence.
+  form.elements.problem.addEventListener("blur", function () {
+    hint(requestText(form.elements.title.value, form.elements.problem.value));
+  });
+
+  function interstitial(matches) {
+    var items = matches.map(function (match) {
+      return "<li><a href=\\"" + esc(match.url) + "\\">" + esc(match.name) + "</a> — " + esc(match.description) +
+        "<pre>" + esc(match.install.claudeCode) + "</pre></li>";
+    });
+    show('<p class="similar-lead">Some of this may already exist</p><ul>' + items.join("") + "</ul>" +
+      '<p class="hint">Requests still waiting on triage are not in this list. ' +
+      '<a href="' + esc(OPEN_REQUESTS) + '" target="_blank" rel="noopener">Check the open ones</a> too.</p>');
+  }
 
   function say(message, kind) {
     status.textContent = message;
@@ -502,17 +566,34 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     window.open(issueUrl(answer, "scenarios"), "_blank", "noopener");
   }
 
+  function handOff(answer) {
+    var url = issueUrl(answer, null);
+    if (url.length > URL_BUDGET) { handOverLongScenarios(answer); return; }
+    window.open(url, "_blank", "noopener");
+    say("Opened on GitHub in a new tab — check it over and press Create. Your answers are still here.");
+  }
+
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     var answer = answers();
     var problem = complain(answer);
     if (problem) { say(problem, "error"); return; }
 
-    var url = issueUrl(answer, null);
-    if (url.length > URL_BUDGET) { handOverLongScenarios(answer); return; }
+    // Never a block: the GitHub form below would sidestep one anyway, and a
+    // wrong match that stops a real request costs more than a duplicate issue.
+    if (!acknowledged) {
+      var matches = rankSimilar(requestText(answer.title, answer.problem), CANDIDATES, FLOOR, 3);
+      if (matches.length > 0) {
+        acknowledged = true;
+        interstitial(matches);
+        button.textContent = "Continue anyway";
+        say("Look at these first. The button now takes your request to GitHub as written.");
+        return;
+      }
+    }
 
-    window.open(url, "_blank", "noopener");
-    say("Opened on GitHub in a new tab — check it over and press Create. Your answers are still here.");
+    handOff(answer);
+    forget();
   });
 })();
 </script>`;
@@ -780,6 +861,13 @@ button[type="submit"] {
 button[type="submit"]:active { transform: translateY(1px); }
 button[disabled] { opacity: .6; cursor: progress; }
 .hint { color: var(--muted); font-size: .8125rem; margin: .4rem 0 0; max-width: 60ch; }
+/* The duplicate warning: an aside beside the field, never a blocking dialog. */
+#similar { margin-top: .75rem; padding: 1rem 1.25rem; background: var(--surface); border-left: 3px solid var(--accent); max-width: 68ch; }
+#similar p { margin: 0 0 .5rem; font-size: .9375rem; }
+#similar ul { margin: 0; padding-left: 1.1rem; }
+#similar li { margin-bottom: .75rem; font-size: .9375rem; }
+#similar pre { margin: .5rem 0 0; padding: .6rem .75rem; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; font-size: .8125rem; }
+.similar-lead { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
 #status { margin-top: 1.25rem; }
 #status.error { color: var(--accent-fg); }
 #no-results { color: var(--muted); }
@@ -817,7 +905,7 @@ export function generateSite(analysis: Analysis, config: HubConfig): Map<string,
   const files = new Map<string, string>();
   files.set("dist/site/index.json", `${JSON.stringify(catalogIndex(analysis, config), null, 2)}\n`);
   files.set("dist/site/index.html", homePage(analysis, config));
-  files.set("dist/site/request.html", requestPage(config));
+  files.set("dist/site/request.html", requestPage(config, analysis.plugins, config.similarityFloor));
   // Always emitted: the contribute path exists whether or not a guide file does.
   files.set("dist/site/contribute.html", contributePage(config, analysis.contributingHtml));
   files.set("dist/site/styles.css", STYLES);
