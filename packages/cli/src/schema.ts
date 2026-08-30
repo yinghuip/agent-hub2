@@ -67,6 +67,23 @@ export const configSchema = z
       .default({ id: "anthropic" }),
     /** GitHub logins/teams added as required reviewers on generated PRs. */
     platformReviewers: z.array(z.string().min(1)).default([]),
+    /**
+     * The seed taxonomy for generated skills. A plugin is a topical collection
+     * of skills, so generation upserts each approved skill into the plugin it
+     * belongs to; these entries name the topics before any plugin exists on
+     * disk. The plugin directory is only created when a first skill lands in
+     * it, so an entry here is a target, not a promise.
+     */
+    collections: z
+      .array(
+        z
+          .object({
+            name: z.string().regex(PLUGIN_NAME, "must be lowercase letters, digits and hyphens"),
+            description: z.string().min(1),
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict();
 

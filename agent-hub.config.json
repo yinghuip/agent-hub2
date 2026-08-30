@@ -17,6 +17,28 @@
   "platformReviewers": [
     "yinghuip"
   ],
+  "collections": [
+    {
+      "name": "git-workflows",
+      "description": "Branching, committing, merging, release and repository hygiene skills."
+    },
+    {
+      "name": "documentation",
+      "description": "Writing, structuring and maintaining docs, READMEs and specs."
+    },
+    {
+      "name": "testing",
+      "description": "Writing, running and triaging tests; coverage and quality gates."
+    },
+    {
+      "name": "project-tracking",
+      "description": "Issues, boards, estimates, standups and sprint ceremonies."
+    },
+    {
+      "name": "data-analysis",
+      "description": "Querying, transforming, visualising and reporting on data."
+    }
+  ],
   "engine": {
     "id": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",

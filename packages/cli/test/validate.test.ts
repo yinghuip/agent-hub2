@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { build, validate } from "../src/index.ts";
-import { CODEOWNERS, pluginYaml, validTree, writeTree } from "./helpers.ts";
+import { CODEOWNERS, CONFIG, pluginYaml, validTree, writeTree } from "./helpers.ts";
 
 const NOW = new Date("2025-06-01T00:00:00Z");
 const codes = async (tree: Record<string, string>) =>
@@ -37,6 +37,25 @@ describe("validate", () => {
     ).errors;
     expect(errors.map((e) => e.code)).toContain("schema");
     expect(errors.map((e) => e.message).join(" ")).toContain("DevOps");
+  });
+
+  it("accepts a seed-collection list and rejects a malformed one", async () => {
+    const withCollections = (collections: unknown) =>
+      JSON.stringify({ ...JSON.parse(CONFIG), collections });
+
+    const good = validTree({
+      "agent-hub.config.json": withCollections([{ name: "git-workflows", description: "Git skills." }]),
+    });
+    const root = await writeTree(good);
+    await build({ root, now: NOW });
+    expect((await validate({ root, now: NOW })).ok).toBe(true);
+
+    expect(
+      await codes(validTree({ "agent-hub.config.json": withCollections([{ name: "Git Workflows", description: "x" }]) })),
+    ).toContain("config");
+    expect(
+      await codes(validTree({ "agent-hub.config.json": withCollections([{ name: "git-workflows" }]) })),
+    ).toContain("config");
   });
 
   it("requires the plugin name to be lowercase-hyphen and to match its directory", async () => {
