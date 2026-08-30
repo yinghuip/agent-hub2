@@ -1,7 +1,7 @@
 import { roleIcon } from "./assets.ts";
 import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
-import { REQUEST_LABELS, REQUEST_SECTIONS, renderRequestIssue } from "./request.ts";
+import { REQUEST_SECTIONS } from "./request.ts";
 import { ROLES } from "./roles.ts";
 import type { HubConfig } from "./schema.ts";
 
@@ -391,8 +391,9 @@ function requestPage(config: HubConfig): string {
   const repo = JSON.stringify(config.repo);
   const body = `<article class="detail">
 <h1>Request a skill</h1>
-<p class="lede">Describe what you need in plain language. Your request becomes a GitHub issue under
-<strong>your own</strong> account, so you stay reachable for questions and get notified when the skill ships.</p>
+<p class="lede">Describe what you need in plain language. This page checks your answers, then hands them to
+GitHub's own request form, so the issue opens under <strong>your own</strong> account — no token to create,
+and you stay reachable for questions and get notified when the skill ships.</p>
 
 <form id="request">
   <label>Skill title<input name="title" required placeholder="PR review checklist"></label>
@@ -411,38 +412,28 @@ function requestPage(config: HubConfig): string {
   <p class="hint" id="scenarios-hint">One <code>Scenario:</code> line and one <code>Expected:</code> line per example. These become the
   criteria the generating agent checks its own work against, so be concrete.</p>
 
-  <label>Your team<input name="team" required placeholder="Web"></label>
-
-  <label>Your GitHub token
-    <input name="token" type="password" required autocomplete="off" aria-describedby="token-hint"
-      placeholder="github_pat_…"></label>
-  <p class="hint" id="token-hint">A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained
-  personal access token</a> scoped to <code>${escape(config.repo)}</code> with <strong>Issues: Read and write</strong>.
-  It goes straight from your browser to GitHub. This page has no server, and never stores your token.</p>
-
-  <button type="submit">Create the request</button>
+  <button type="submit">Continue on GitHub</button>
   <p id="status" role="status"></p>
 </form>
 
-<p class="hint">No token, or it isn't working? <a id="fallback" href="https://github.com/${escape(
-    config.repo,
-  )}/issues/new?template=skill-request.yml" target="_blank" rel="noopener">Open the same form on GitHub</a>
-It carries over whatever you have typed here.</p>
+<p class="hint">Your answers stay on this page after the hand-off, so nothing is lost if GitHub's form is
+missing something. <a href="https://github.com/${escape(config.repo)}/issues/new?template=skill-request.yml"
+target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather fill it in there.</p>
 
 <script>
 (function () {
   var REQUEST_SECTIONS = ${embedJson(REQUEST_SECTIONS)};
-  var REQUEST_LABELS = ${embedJson(REQUEST_LABELS)};
-  // Emitted from the build's own renderer, so the page and the parser that reads
-  // the issue back cannot drift apart.
-  var renderRequestIssue = ${renderRequestIssue.toString()};
+  // Emitted from the build's own table, so the fields this page prefills and the
+  // ids the issue template declares cannot drift apart.
 
   var REPO = ${repo};
-  var API = "https://api.github.com/repos/" + REPO + "/issues";
+  var TEMPLATE = "skill-request.yml";
+  // GitHub answers 414 once a prefill URL passes the server's limit, so stay
+  // well under it and hand the overflow to the clipboard instead.
+  var URL_BUDGET = 6000;
+
   var form = document.getElementById("request");
   var status = document.getElementById("status");
-  var fallback = document.getElementById("fallback");
-  var button = form.querySelector("button");
 
   function say(message, kind) {
     status.textContent = message;
@@ -455,24 +446,9 @@ It carries over whatever you have typed here.</p>
       title: String(data.get("title") || ""),
       roles: data.getAll("roles").map(String),
       problem: String(data.get("problem") || ""),
-      scenarios: String(data.get("scenarios") || ""),
-      team: String(data.get("team") || "")
+      scenarios: String(data.get("scenarios") || "")
     };
   }
-
-  /** The same fields, handed to GitHub's own issue form when posting is not an option. */
-  fallback.addEventListener("click", function () {
-    var answer = answers();
-    fallback.href = "https://github.com/" + REPO + "/issues/new?" + new URLSearchParams({
-      template: "skill-request.yml",
-      title: "Skill request: " + answer.title,
-      "skill-title": answer.title,
-      roles: answer.roles.join(", "),
-      problem: answer.problem,
-      scenarios: answer.scenarios,
-      team: answer.team
-    }).toString();
-  });
 
   /** Catch what the generation agent's parser would reject, while it is still fixable. */
   function complain(answer) {
@@ -484,23 +460,46 @@ It carries over whatever you have typed here.</p>
     return null;
   }
 
-  function explain(response) {
-    if (response.status === 401) return "GitHub rejected that token (401). It may be expired or mistyped, so create a new fine-grained token and try again.";
-    if (response.status === 403) return "That token is not allowed to open issues here (403). Check it grants Issues: Read and write.";
-    if (response.status === 404) return "This repository is not visible to that token (404). Fine-grained tokens for an organisation repo need an admin to approve them, so ask the platform team, or use the GitHub form below.";
-    if (response.status === 422) return "GitHub could not accept the request (422). Check every field is filled in, then try again.";
-    return "GitHub returned an unexpected error (" + response.status + "). Use the GitHub form below instead.";
+  /**
+   * The template's own field ids carry the answers over. Labels come from the
+   * template rather than a "labels" parameter, which would need the requester
+   * to hold label permission on the repository.
+   */
+  function issueUrl(answer, omit) {
+    var values = {
+      title: answer.title,
+      roles: answer.roles.join(", "),
+      problem: answer.problem,
+      scenarios: answer.scenarios
+    };
+    var params = new URLSearchParams({ template: TEMPLATE, title: "Skill request: " + answer.title });
+    REQUEST_SECTIONS.forEach(function (section) {
+      if (section.field !== omit) params.set(section.param, values[section.field]);
+    });
+    return "https://github.com/" + REPO + "/issues/new?" + params.toString();
   }
 
-  function announce(issue) {
-    say("Request opened as ");
-    var link = document.createElement("a");
-    link.href = issue.html_url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = "#" + issue.number;
-    status.appendChild(link);
-    status.appendChild(document.createTextNode(". Watch that issue for progress."));
+  /**
+   * Scenarios is the only answer long enough to blow the URL budget, so carry
+   * everything else in the link and put that one on the clipboard.
+   */
+  function handOverLongScenarios(answer) {
+    var paste = "Your scenarios were too long to carry in the link, so they are on your clipboard — " +
+      "paste them into \\"Example scenarios and expected results\\" on GitHub.";
+    var manual = "Your scenarios were too long to carry in the link, and this browser would not let the " +
+      "page copy them. Copy the scenarios box above yourself and paste it into that field on GitHub.";
+    var copied = null;
+    try {
+      copied = navigator.clipboard.writeText(answer.scenarios);
+    } catch (error) {
+      copied = null;
+    }
+    if (copied && copied.then) {
+      copied.then(function () { say(paste); }).catch(function () { say(manual, "error"); });
+    } else {
+      say(manual, "error");
+    }
+    window.open(issueUrl(answer, "scenarios"), "_blank", "noopener");
   }
 
   form.addEventListener("submit", function (event) {
@@ -509,31 +508,11 @@ It carries over whatever you have typed here.</p>
     var problem = complain(answer);
     if (problem) { say(problem, "error"); return; }
 
-    var token = String(new FormData(form).get("token") || "");
-    var issue = renderRequestIssue(answer);
-    button.disabled = true;
-    say("Creating your request on GitHub…");
+    var url = issueUrl(answer, null);
+    if (url.length > URL_BUDGET) { handOverLongScenarios(answer); return; }
 
-    fetch(API, {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: "Bearer " + token,
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28"
-      },
-      body: JSON.stringify({ title: issue.title, body: issue.body, labels: issue.labels })
-    }).then(function (response) {
-      button.disabled = false;
-      if (!response.ok) { say(explain(response), "error"); return; }
-      return response.json().then(function (created) {
-        form.reset();
-        announce(created);
-      });
-    }).catch(function () {
-      button.disabled = false;
-      say("Could not reach GitHub. Check your connection, or use the GitHub form below.", "error");
-    });
+    window.open(url, "_blank", "noopener");
+    say("Opened on GitHub in a new tab — check it over and press Create. Your answers are still here.");
   });
 })();
 </script>`;

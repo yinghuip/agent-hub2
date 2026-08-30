@@ -248,8 +248,13 @@ the display face so a plugin page reads as one document.
 
 Structurally as-is, restyled: zero radius, `--line-ui` borders on every field so
 inputs are perceivable, labels above inputs, helper text present, error text
-below. The token field keeps its explanation. Status messages use `--fg` for
-progress and `--accent-fg` for errors, which clears AA on both backgrounds.
+below. Status messages use `--fg` for progress and `--accent-fg` for errors,
+which clears AA on both backgrounds.
+
+Amended after this design was written: the token field described here no longer
+exists. The form asks for no credential and hands its answers to GitHub's own
+prefilled issue form, so the status region reports the hand-off rather than an
+API result. The styling contract above is unchanged.
 
 ## 8. Motion
 

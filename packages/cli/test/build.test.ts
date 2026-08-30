@@ -373,43 +373,58 @@ describe("accessibility contracts", () => {
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
-    expect(page).toContain('aria-describedby="token-hint"');
-    expect(page).toContain('id="token-hint"');
     expect(page).toContain('aria-describedby="scenarios-hint"');
     expect(page).toContain('id="scenarios-hint"');
   });
 });
 
 describe("request page", () => {
-  it("creates the issue through the GitHub API under the requester's own token", async () => {
+  it("hands the answers to GitHub's own form instead of asking for a token", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
-    expect(page).toContain('"https://api.github.com/repos/" + REPO + "/issues"');
+    // The page has no backend and now asks for no credential: GitHub's own
+    // session authenticates the requester on GitHub's own form.
+    expect(page).not.toContain("api.github.com");
+    expect(page).not.toContain("Authorization");
+    expect(page).not.toContain('name="token"');
+
     expect(page).toContain('REPO = "acme/agent-hub"');
-    expect(page).toContain("Authorization");
-    expect(page).toContain('"skill-request"');
-    // The page embeds the build's own renderer rather than reimplementing it,
-    // so what the browser posts is exactly what the parser round-trip covers.
-    expect(page).toContain(renderRequestIssue.toString());
-    expect(page).toContain("Example scenarios and expected results");
+    expect(page).toContain('TEMPLATE = "skill-request.yml"');
+    expect(page).toContain('"https://github.com/" + REPO + "/issues/new?"');
+    // The prefill parameters come from the build's own table rather than being
+    // retyped here, so they cannot drift from the template's field ids.
+    expect(page).toContain('"param":"skill-title"');
+    expect(page).toContain('"param":"scenarios"');
     // Every role in the taxonomy is offered, as on the catalog.
     for (const role of ["Developer", "QA", "Business Analyst", "Scrum Master", "UX Designer", "General"]) {
       expect(page).toContain(`value="${role}"`);
     }
   });
 
-  it("explains auth and access failures, and offers a no-token fallback", async () => {
+  it("carries long scenarios on the clipboard rather than blowing the URL limit", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
-    expect(page).toContain("401");
-    expect(page).toContain("403");
-    expect(page).toContain("404");
-    expect(page).toContain("issues/new?");
-    // The fallback carries the typed answers over to GitHub's own form.
-    expect(page).toContain('"skill-title": answer.title');
+    expect(page).toContain("URL_BUDGET = 6000");
+    expect(page).toContain("url.length > URL_BUDGET");
+    expect(page).toContain("handOverLongScenarios");
+    expect(page).toContain('issueUrl(answer, "scenarios")');
+    // navigator.clipboard is absent on insecure origins, so the page must say
+    // what to do rather than throwing.
+    expect(page).toContain("navigator.clipboard.writeText");
+    expect(page).toContain("catch (error)");
+  });
+
+  it("still validates scenario format before handing off", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain("Pick at least one role.");
+    expect(page).toContain("scenario\\s*:");
+    expect(page).toContain("expected\\s*:");
   });
 });
