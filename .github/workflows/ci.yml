@@ -22,6 +22,27 @@ jobs:
       - name: Validate the plugins tree
         run: node packages/cli/bin/agent-hub.js validate
 
+      # Consumers read change through the version, so a touched plugin must bump it.
+      - name: Check semver bumps
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=50 origin "$BASE"
+          failed=0
+          version_of() { sed -n 's/^version:[[:space:]]*//p' | head -1; }
+          for dir in $(git diff --name-only "origin/$BASE...HEAD" -- plugins/ | cut -d/ -f1-2 | sort -u); do
+            [ -f "$dir/plugin.yaml" ] || continue
+            old=$(git show "origin/$BASE:$dir/plugin.yaml" 2>/dev/null | version_of) || true
+            [ -n "$old" ] || continue  # brand-new plugin: nothing to bump
+            new=$(version_of < "$dir/plugin.yaml")
+            if [ "$old" = "$new" ]; then
+              echo "::error file=$dir/plugin.yaml::$dir changed but version is still $old — bump the semver version"
+              failed=1
+            fi
+          done
+          exit $failed
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

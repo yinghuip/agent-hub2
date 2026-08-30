@@ -1,5 +1,4 @@
 {
-  "$schema": "https://agent-plugins.org/schema/v1.0.0/plugin.json",
   "name": "agent-hub",
   "description": "The internal marketplace for agent skills — browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
   "plugins": [

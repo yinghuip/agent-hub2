@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ROLES } from "./roles.ts";
+import type { ValidationCode, ValidationError } from "./types.ts";
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/;
 const PLUGIN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -37,6 +38,8 @@ export const configSchema = z
     recentlyAddedDays: z.number().int().positive().default(30),
     recentlyAddedLimit: z.number().int().positive().default(5),
     approvalLabel: z.string().min(1).default("approved-for-generation"),
+    /** GitHub logins/teams added as required reviewers on generated PRs. */
+    platformReviewers: z.array(z.string().min(1)).default([]),
   })
   .strict();
 
@@ -45,8 +48,8 @@ export type HubConfig = z.infer<typeof configSchema>;
 /** Flatten zod issues into our validation-error shape. */
 export function zodErrors(
   error: z.ZodError,
-  base: { code: string; plugin?: string; path?: string },
-): { code: string; message: string; plugin?: string; path?: string }[] {
+  base: { code: ValidationCode; plugin?: string; path?: string },
+): ValidationError[] {
   return error.issues.map((issue) => ({
     ...base,
     message: `${issue.path.join(".") || "(root)"}: ${issue.message}`,

@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { analyse, type AnalyseOptions } from "./analyse.ts";
-import { generateManifests, generateSite } from "./generate.ts";
+import { generateManifests } from "./manifests.ts";
+import { generateSite } from "./site.ts";
 import type { ValidationError } from "./types.ts";
 
 export type BuildResult = { ok: boolean; errors: ValidationError[]; written: string[] };

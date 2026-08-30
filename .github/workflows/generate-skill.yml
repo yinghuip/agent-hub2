@@ -12,8 +12,25 @@ permissions:
   pull-requests: write
 
 jobs:
+  # The label and the reviewers live in agent-hub.config.json, the single
+  # configuration point, so renaming either is one edit.
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      approval-label: ${{ steps.read.outputs.approval-label }}
+      reviewers: ${{ steps.read.outputs.reviewers }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          {
+            echo "approval-label=$(jq -r .approvalLabel agent-hub.config.json)"
+            echo "reviewers=$(jq -r '.platformReviewers | join(",")' agent-hub.config.json)"
+          } >> "$GITHUB_OUTPUT"
+
   generate:
-    if: github.event.label.name == 'approved-for-generation'
+    needs: config
+    if: github.event.label.name == needs.config.outputs.approval-label
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,14 +72,18 @@ jobs:
             - Create plugins/<kebab-name>/ with plugin.yaml, README.md and skills/<skill>/SKILL.md.
               Set roles to the request's roles verbatim, ownerTeam to the request's team, version to 1.0.0.
             - Portable subset only: no hooks/, commands/ or agents/ directories.
-            - Add a CODEOWNERS line for the new plugin directory.
-            - Run `node packages/cli/bin/agent-hub.js build` and commit the generated manifests.
+            - Add a CODEOWNERS line for the new plugin directory owned by the requesting team.
+            - Run `node packages/cli/bin/agent-hub.js build` and commit the generated manifests, then
+              `node packages/cli/bin/agent-hub.js validate` and fix anything it reports.
             - Self-evaluate: for each scenario in the request, walk the SKILL.md and state whether it
               produces the expected result. Revise the skill until every scenario passes, then put that
               evaluation in the PR body under "Self-evaluation".
             - Never push to main. Open a pull request from a branch named skill/<kebab-name>, titled
               "Add <name> (requested in #${{ github.event.issue.number }})", with "Closes #${{ github.event.issue.number }}"
-              in the body, and request review from @${{ github.event.issue.user.login }}.
+              in the body. Request review from BOTH the requester (@${{ github.event.issue.user.login }})
+              for functional sign-off and the platform reviewers (${{ needs.config.outputs.reviewers }})
+              for quality and security, using:
+              gh pr edit <number> --add-reviewer "${{ github.event.issue.user.login }},${{ needs.config.outputs.reviewers }}"
           claude_args: --allowed-tools "Bash,Read,Write,Edit,Glob,Grep"
 
       - name: Tell the requester

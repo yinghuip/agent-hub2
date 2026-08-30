@@ -28,13 +28,29 @@ Any tool, via the universal fallback:
 curl -fsSL https://raw.githubusercontent.com/yinghuip/agent-hub2/main/scripts/install.sh | bash -s -- pr-review-checklist
 ```
 
+## Access control
+
+The catalog is a GitHub Pages site. Set **Settings → Pages → Visibility** to
+**Private** so only org members can reach it; the repo itself is private, and
+there is no other auth layer because there is no backend. The publish workflow
+does not change this setting — it is a one-time repo configuration.
+
 ## Request a skill
 
 Use **Request a skill** on the catalog site, or open the
 [skill request issue form](../../issues/new?template=skill-request.yml) directly.
-The platform team triages; applying the `approved-for-generation` label starts an
-agent that drafts the plugin, evaluates it against the scenarios you wrote, and
-opens a pull request with you as reviewer.
+The platform team triages; applying the approval label (`approvalLabel` in
+`agent-hub.config.json`) starts an agent that drafts the plugin, evaluates it
+against the scenarios you wrote, and opens a pull request with you and the
+platform reviewers (`platformReviewers`) as reviewers.
+
+The form submits by opening GitHub's own prefilled issue form in a new tab
+rather than POSTing to the API. Same outcome — the issue is created under the
+requester's identity — with no OAuth app to register and no token in the page.
+
+Generated PRs must never merge on the agent's own say-so. Protect `main` with
+"Require a pull request before merging", "Require review from Code Owners" and
+at least two approvals, so both the requester and a platform reviewer sign off.
 
 ## Contribute a skill
 

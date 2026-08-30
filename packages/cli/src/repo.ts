@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { join, sep } from "node:path";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
@@ -130,8 +130,4 @@ async function gitTimestamps(root: string, relDir: string): Promise<Timestamps |
   } catch {
     return null;
   }
-}
-
-export function relPath(root: string, abs: string): string {
-  return relative(root, abs).split(sep).join("/");
 }

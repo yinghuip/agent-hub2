@@ -6,7 +6,13 @@
 #   curl -fsSL <raw-url>/scripts/install.sh | bash -s -- <plugin> [--tool claude|copilot|codex] [--dest <dir>]
 set -euo pipefail
 
+# Kept in step with `repo` in agent-hub.config.json; override for a fork.
 REPO="${AGENT_HUB_REPO:-yinghuip/agent-hub2}"
+usage() {
+  echo "usage: install.sh <plugin> [--tool claude|copilot|codex] [--dest <dir>]"
+  echo "  installs one Agent Hub plugin's skills into the tool's skills directory"
+}
+
 PLUGIN=""
 TOOL="claude"
 DEST=""
@@ -15,13 +21,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --tool) TOOL="$2"; shift 2 ;;
     --dest) DEST="$2"; shift 2 ;;
-    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) PLUGIN="$1"; shift ;;
   esac
 done
 
-[ -n "$PLUGIN" ] || { echo "usage: install.sh <plugin> [--tool claude|copilot|codex] [--dest <dir>]" >&2; exit 2; }
+[ -n "$PLUGIN" ] || { usage >&2; exit 2; }
 
 if [ -z "$DEST" ]; then
   case "$TOOL" in

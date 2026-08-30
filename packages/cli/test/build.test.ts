@@ -132,7 +132,8 @@ describe("build", () => {
     const { install } = (await readJson(root, "dist/site/index.json")).plugins[0];
     expect(install.claudeCode).toContain("/plugin marketplace add acme/agent-hub");
     expect(install.claudeCode).toContain("/plugin install pr-review@agent-hub");
-    expect(install.copilot).toContain("pr-review");
+    // Copilot CLI reads the same marketplace format, so it takes the same commands.
+    expect(install.copilot).toBe(install.claudeCode);
     expect(install.codex).toContain("pr-review");
     expect(install.universal).toContain("install.sh");
     expect(install.universal).toContain("pr-review");
@@ -186,6 +187,12 @@ describe("build", () => {
     expect(home).toContain("Product Owner");
     // A multi-role plugin appears under each of its roles.
     expect(home.split("story-splitter").length - 1).toBeGreaterThanOrEqual(2);
+
+    // Role filtering is a control, not just something you can type into search.
+    for (const role of ["Developer", "QA", "Business Analyst", "Product Owner"]) {
+      expect(home).toContain(`data-role-filter="${role}"`);
+    }
+    expect(home).not.toContain('data-role-filter="Scrum Master"');
 
     const page = await read(root, "dist/site/plugins/pr-review.html");
     expect(page).toContain("<strong>checklist</strong>");

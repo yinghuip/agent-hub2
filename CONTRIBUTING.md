@@ -35,6 +35,10 @@ each of them in the catalog.
 
 A marketplace plugin may contain **only** `SKILL.md` skills and `mcp.json`.
 Claude-only features — `hooks/`, `commands/`, `agents/` — are a lint failure.
+The full set of permitted top-level entries is therefore: `plugin.yaml` (or
+`plugin.yml`), `README.md`, `mcp.json`, `skills/`, `LICENSE`, `CHANGELOG.md`,
+and the generated `plugin.json` / `.claude-plugin/`. Anything else fails
+`portable-subset`.
 That rule is what makes "works in all three tools" literally true; without it a
 Copilot user can install something their tool silently ignores.
 
@@ -66,6 +70,7 @@ directory — CI rejects plugins with no owner:
 
 | Rule | Failure code |
 | --- | --- |
+| `agent-hub.config.json` is present and valid | `config` |
 | `plugin.yaml` matches the canonical schema (incl. role taxonomy, semver) | `schema` |
 | Name is lowercase-hyphen and matches its directory | `name-mismatch` |
 | No two plugins share a name | `name-unique` |
@@ -79,7 +84,8 @@ directory — CI rejects plugins with no owner:
 ## Versioning and rollback
 
 Per-plugin semver in `plugin.yaml`; "latest on main" is the only channel. No
-tags, no pinning. Rollback is a plain `git revert`.
+tags, no pinning. Rollback is a plain `git revert`. CI fails a PR that changes
+a plugin without bumping its version.
 
 ## Staleness
 

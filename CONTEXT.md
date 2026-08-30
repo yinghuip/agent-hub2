@@ -21,8 +21,10 @@ GitHub Pages is the catalog. There is no backend service anywhere.
 - **Catalog** — the static site under `dist/site`, generated from the same
   analysis. Its `index.json` is the contract the site is tested through.
 - **Portable subset** — the only content a marketplace plugin may contain:
-  `SKILL.md` skills and `mcp.json`. Hooks, slash commands and subagents are
-  Claude-only and therefore lint failures.
+  `SKILL.md` skills and `mcp.json`, plus its README, canonical metadata,
+  generated manifests and optional `LICENSE` / `CHANGELOG.md` (all inert in
+  every tool). Hooks, slash commands and subagents are Claude-only and
+  therefore lint failures. The exact list is in CONTRIBUTING.md.
 - **Role** — one of the fixed taxonomy {Developer, QA, Business Analyst,
   Product Owner, Scrum Master, UX Designer, General}. Used for catalog grouping
   and on the request form.

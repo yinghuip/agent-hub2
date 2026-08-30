@@ -11,7 +11,6 @@
   "plugins": [
     {
       "name": "pr-review-checklist",
-      "source": "./plugins/pr-review-checklist",
       "description": "Reviews a pull request against the team's checklist for tests, accessibility and rollback safety.",
       "version": "1.0.0",
       "author": {
@@ -22,7 +21,8 @@
         "code-review",
         "pull-request",
         "checklist"
-      ]
+      ],
+      "source": "./plugins/pr-review-checklist"
     }
   ]
 }

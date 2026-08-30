@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { build, validate } from "./build.ts";
 import { parseSkillRequest } from "./request.ts";
@@ -60,7 +61,7 @@ export async function main(argv: string[]): Promise<number> {
 
   if (command === "parse-request") {
     const file = flag(argv, "file");
-    const body = file ? await (await import("node:fs/promises")).readFile(file, "utf8") : await readStdin();
+    const body = file ? await readFile(file, "utf8") : await readStdin();
     const result = parseSkillRequest(body);
     console.log(JSON.stringify(result, null, 2));
     return result.ok ? 0 : 1;

@@ -1,98 +1,7 @@
+import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
 import { ROLES } from "./roles.ts";
 import type { HubConfig } from "./schema.ts";
-
-export const AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schema/v1.0.0/plugin.json";
-
-const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-
-const dropUndefined = <T extends Record<string, unknown>>(value: T): T =>
-  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
-
-/** The agent-plugins.org v1.0.0 manifest read by Copilot and Codex. */
-export function agentPluginsManifest(plugin: CatalogPlugin) {
-  return dropUndefined({
-    $schema: AGENT_PLUGINS_SCHEMA,
-    name: plugin.name,
-    description: plugin.description,
-    version: plugin.version,
-    author: plugin.author,
-    keywords: plugin.keywords,
-  });
-}
-
-/** The Claude Code plugin manifest, from the same canonical metadata. */
-export function claudeManifest(plugin: CatalogPlugin) {
-  return dropUndefined({
-    name: plugin.name,
-    description: plugin.description,
-    version: plugin.version,
-    author: plugin.author,
-    keywords: plugin.keywords,
-  });
-}
-
-/** Generated files that live in the repo and are checked for drift in CI. */
-export function generateManifests(config: HubConfig, plugins: CatalogPlugin[]): Map<string, string> {
-  const files = new Map<string, string>();
-
-  for (const plugin of plugins) {
-    files.set(`${plugin.path}/plugin.json`, json(agentPluginsManifest(plugin)));
-    files.set(`${plugin.path}/.claude-plugin/plugin.json`, json(claudeManifest(plugin)));
-  }
-
-  files.set(
-    ".claude-plugin/marketplace.json",
-    json({
-      name: config.name,
-      owner: config.owner,
-      metadata: { description: config.description, version: "1.0.0" },
-      plugins: plugins.map((plugin) => ({
-        name: plugin.name,
-        source: `./${plugin.path}`,
-        description: plugin.description,
-        version: plugin.version,
-        author: plugin.author,
-        keywords: plugin.keywords,
-      })),
-    }),
-  );
-
-  files.set(
-    ".github/copilot/marketplace.json",
-    json({
-      $schema: AGENT_PLUGINS_SCHEMA,
-      name: config.name,
-      description: config.description,
-      plugins: plugins.map((plugin) => ({
-        name: plugin.name,
-        source: `./${plugin.path}`,
-        description: plugin.description,
-        version: plugin.version,
-      })),
-    }),
-  );
-
-  return files;
-}
-
-export function catalogIndex(analysis: Analysis, config: HubConfig) {
-  return {
-    generatedAt: analysis.now.toISOString(),
-    site: {
-      name: config.name,
-      displayName: config.displayName,
-      description: config.description,
-      repo: config.repo,
-      siteUrl: config.siteUrl,
-    },
-    roles: [...ROLES],
-    recentlyAdded: analysis.recentlyAdded,
-    plugins: analysis.plugins,
-  };
-}
-
-// ---------------------------------------------------------------- site
 
 const escape = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -131,7 +40,7 @@ function badge(text: string, kind = ""): string {
 }
 
 function card(plugin: CatalogPlugin): string {
-  return `<article class="card" data-search="${escape(
+  return `<article class="card" data-roles="${escape(plugin.roles.join("|"))}" data-search="${escape(
     [plugin.name, plugin.description, plugin.ownerTeam, ...plugin.keywords, ...plugin.roles].join(" ").toLowerCase(),
   )}">
   <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
@@ -148,6 +57,12 @@ function homePage(analysis: Analysis, config: HubConfig): string {
     .map((name) => plugins.find((p) => p.name === name))
     .filter((p): p is CatalogPlugin => Boolean(p));
 
+  const populatedRoles = ROLES.filter((role) => plugins.some((p) => p.roles.includes(role)));
+  const roleFilters = `<nav class="filters" aria-label="Filter by role">
+  <button class="filter active" data-role-filter="">All</button>
+  ${populatedRoles.map((role) => `<button class="filter" data-role-filter="${escape(role)}">${escape(role)}</button>`).join("\n  ")}
+</nav>`;
+
   const roleSections = ROLES.map((role) => {
     const inRole = plugins.filter((p) => p.roles.includes(role));
     if (inRole.length === 0) return "";
@@ -162,6 +77,7 @@ function homePage(analysis: Analysis, config: HubConfig): string {
   const body = `<h1>${escape(config.displayName)}</h1>
 <p class="lede">${escape(config.description)}</p>
 <input id="search" type="search" placeholder="Search ${plugins.length} skills by name, keyword or team…" autocomplete="off">
+${roleFilters}
 <p id="no-results" hidden>No skills match that search.</p>
 ${
   recent.length
@@ -178,13 +94,18 @@ ${roleSections}
   var input = document.getElementById("search");
   var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
   var sections = Array.prototype.slice.call(document.querySelectorAll("section"));
+  var filters = Array.prototype.slice.call(document.querySelectorAll("[data-role-filter]"));
   var empty = document.getElementById("no-results");
-  input.addEventListener("input", function () {
+  var role = "";
+
+  function apply() {
     var terms = input.value.toLowerCase().split(/\\s+/).filter(Boolean);
     var visible = 0;
     cards.forEach(function (card) {
       var haystack = card.getAttribute("data-search");
-      var match = terms.every(function (term) { return haystack.indexOf(term) !== -1; });
+      var roles = card.getAttribute("data-roles").split("|");
+      var match = terms.every(function (term) { return haystack.indexOf(term) !== -1; }) &&
+        (role === "" || roles.indexOf(role) !== -1);
       card.hidden = !match;
       if (match) visible++;
     });
@@ -192,6 +113,15 @@ ${roleSections}
       section.hidden = section.querySelectorAll(".card:not([hidden])").length === 0;
     });
     empty.hidden = visible !== 0;
+  }
+
+  input.addEventListener("input", apply);
+  filters.forEach(function (button) {
+    button.addEventListener("click", function () {
+      role = button.getAttribute("data-role-filter");
+      filters.forEach(function (other) { other.classList.toggle("active", other === button); });
+      apply();
+    });
   });
 })();
 </script>`;
@@ -276,6 +206,9 @@ h1 { margin-bottom: .25rem; }
 .card p { margin: .25rem 0; }
 .meta { color: var(--muted); font-size: .85rem; }
 .badge { display: inline-block; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .75rem; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0 1.2rem; }
+.filter { margin: 0; padding: .35rem .8rem; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; }
+.filter.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .badge.stale { border-color: #d08700; color: #d08700; }
 pre { background: var(--card); border: 1px solid var(--line); border-radius: .5rem; padding: .8rem; overflow-x: auto; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; }

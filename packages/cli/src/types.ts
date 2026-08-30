@@ -1,6 +1,19 @@
+/** The closed vocabulary of failure codes, as documented in CONTRIBUTING.md. */
+export type ValidationCode =
+  | "config"
+  | "schema"
+  | "name-mismatch"
+  | "name-unique"
+  | "portable-subset"
+  | "no-skills"
+  | "skill-frontmatter"
+  | "readme"
+  | "codeowners"
+  | "secret"
+  | "manifest-drift";
+
 export type ValidationError = {
-  /** Stable machine-readable rule id, e.g. `portable-subset`. */
-  code: string;
+  code: ValidationCode;
   message: string;
   plugin?: string;
   /** Repo-relative path the error is about. */
