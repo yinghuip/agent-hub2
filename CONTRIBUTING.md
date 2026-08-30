@@ -26,7 +26,7 @@ files and the catalog index from it, so nothing drifts.
 ```yaml
 name: pr-review-checklist        # lowercase-hyphen, must match the directory
 description: One sentence a browser can judge relevance from.
-version: 1.0.0                   # semver; bump it in every PR that changes the plugin
+version: 1.0.0                   # semver; bump in every PR
 ownerTeam: platform
 author:
   name: Platform Team

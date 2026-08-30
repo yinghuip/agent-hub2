@@ -51,7 +51,7 @@ function layout(config: HubConfig, title: string, body: string, depth: number, c
   <nav class="utility">
     ${item("contribute", `${base}/contribute.html`, "Contribute")}
     ${item("request", `${base}/request.html`, "Request a skill")}
-    ${item("requests", `${base}/requests.html`, "Requests")}
+    ${item("requests", `${base}/requests.html`, "Open requests")}
     <a href="https://github.com/${escape(config.repo)}">Repository<span class="ext" aria-hidden="true"> ↗</span></a>
   </nav>
 </header>
@@ -119,7 +119,10 @@ function homePage(analysis: Analysis, config: HubConfig): string {
     .filter((plugin): plugin is CatalogPlugin => Boolean(plugin));
   // One tile per plugin, whatever its role count: roles are chips on the tile
   // and a filter over the sheet, never a reason to print the same card twice.
-  const catalogGrid = `<div class="grid">${plugins.map((plugin, index) => tile(plugin, index)).join("\n")}</div>`;
+  // The lead tile earns its double span only once there is a sheet to lead.
+  const catalogGrid = `<div class="grid">${plugins
+    .map((plugin, index) => tile(plugin, plugins.length >= 3 ? index : index + 1))
+    .join("\n")}</div>`;
 
   const body = `<section class="hero">
   <div class="hero-copy">
@@ -310,6 +313,7 @@ const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
   const body = `<article class="detail">
+  <p class="crumb"><a href="../index.html#catalog">&larr; Catalog</a></p>
   <header class="detail-head">
     <h1>${escape(plugin.name)}</h1>
     ${plugin.stale ? staleLabel : ""}
@@ -515,8 +519,8 @@ function openRequestsPage(analysis: Analysis, config: HubConfig): string {
       .filter(Boolean)
       .join("\n");
     main = `<p>${requests.length === 1 ? "One request is" : `${requests.length} requests are`} open. Adding your
-  scenarios to one that already exists beats filing a second: the generating agent turns every
-  <code>Scenario:</code>/<code>Expected:</code> pair into an eval.</p>
+  examples to one that already exists beats filing a second: the generating agent turns every example
+  into an eval it must pass.</p>
 ${sections}`;
   }
 
@@ -679,15 +683,21 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     similar.innerHTML = "";
   }
 
+  // Matches open in a new tab: this aside invites a look elsewhere, and
+  // following it must not cost the requester the answers they have typed.
+  function link(url, label) {
+    return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + label + "</a>";
+  }
+
   /** While typing: the single closest skill, with the command that installs it. */
   function hint(query) {
     var matches = rankSimilar(query, CANDIDATES, FLOOR, 1);
     if (matches.length === 0) { similar.hidden = true; similar.innerHTML = ""; return; }
     var match = matches[0];
     show('<p class="similar-lead">This may already exist</p>' +
-      '<p><a href="' + esc(match.url) + '">' + esc(match.name) + "</a>: " + esc(match.description) + "</p>" +
+      "<p>" + link(match.url, esc(match.name)) + ": " + esc(match.description) + "</p>" +
       "<pre>" + esc(match.install.claudeCode) + "</pre>" +
-      '<p class="hint"><a href="' + esc(match.url) + '">Read what it does</a> before writing this one out.</p>');
+      '<p class="hint">' + link(match.url, "Read what it does") + " before writing this one out. It opens in a new tab; your answers stay here.</p>");
   }
 
   form.elements.title.addEventListener("input", function () {
@@ -701,12 +711,12 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   function interstitial(matches) {
     var items = matches.map(function (match) {
-      return "<li><a href=\\"" + esc(match.url) + "\\">" + esc(match.name) + "</a>: " + esc(match.description) +
+      return "<li>" + link(match.url, esc(match.name)) + ": " + esc(match.description) +
         "<pre>" + esc(match.install.claudeCode) + "</pre></li>";
     });
     show('<p class="similar-lead">Some of this may already exist</p><ul>' + items.join("") + "</ul>" +
       '<p class="hint">Requests still waiting on triage are not in this list. ' +
-      '<a href="' + esc(OPEN_REQUESTS) + '">See the open requests</a> too.</p>');
+      link(OPEN_REQUESTS, "See the open requests") + " too. Links open in a new tab; your answers stay here.</p>");
   }
 
   function say(message, kind) {
@@ -923,13 +933,19 @@ const STYLES = `@font-face {
 }
 
 * { box-sizing: border-box; }
+/* The footer belongs at the bottom of the viewport even when the page is
+   short: a footer floating mid-screen over bare ground reads as a broken page. */
 body {
   margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   font: 400 16px/1.55 var(--body);
   -webkit-font-smoothing: antialiased;
 }
+main { flex: 1; }
 a { color: var(--accent-fg); }
 code, pre { font-family: var(--mono); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -962,8 +978,8 @@ header.site {
   border-bottom: 1px solid var(--line);
 }
 .brand { font-family: var(--display); font-weight: 700; font-size: 1.35rem; letter-spacing: .02em; text-decoration: none; color: var(--fg); }
-.utility { display: flex; gap: 1.5rem; font-size: .875rem; }
-.utility a { color: var(--fg); text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 2px; }
+.utility { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; font-size: .875rem; }
+.utility a { color: var(--fg); text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 2px; white-space: nowrap; }
 .utility a:hover, .utility a[aria-current="page"] { border-bottom-color: var(--accent); }
 .ext { color: var(--muted); }
 
@@ -1074,23 +1090,31 @@ footer a { color: var(--invert-fg); }
 .path { background: var(--bg); padding: clamp(1.5rem, 3vw, 2.5rem); display: flex; flex-direction: column; align-items: flex-start; }
 .path p { color: var(--muted); max-width: 52ch; margin-bottom: 1.5rem; }
 .path .cta { margin-top: auto; }
-.cta {
+/* The one primary-action recipe, link or button. */
+.cta, button[type="submit"] {
   display: inline-block;
   margin-top: 1.5rem;
   padding: .8rem 1.5rem;
   background: var(--accent);
   color: var(--on-accent);
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
   text-decoration: none;
-  font-size: .8125rem;
+  font: 700 .8125rem var(--display);
+  text-transform: uppercase;
   letter-spacing: .12em;
-  font-weight: 700;
   white-space: nowrap;
 }
-.cta:active { transform: translateY(1px); }
+.cta:hover, button[type="submit"]:hover { background: var(--accent-down); }
+.cta:active, button[type="submit"]:active { transform: translateY(1px); }
 
 /* Plugin detail. */
 /* Detail pages are not <section>, so they carry the well and gutter themselves. */
-.detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }
+.detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); width: 100%; }
+.crumb { margin: 0 0 1.5rem; font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
+.crumb a { color: var(--muted); text-decoration: none; }
+.crumb a:hover { color: var(--accent-fg); }
 .detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; }
 .detail-head .lede { flex-basis: 100%; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0; margin: 2.5rem 0; border-top: 1px solid var(--line); }
@@ -1152,19 +1176,7 @@ legend { font-family: var(--display); text-transform: uppercase; font-size: .75r
 label.check { display: inline-flex; align-items: center; gap: .4rem; margin: 0 1.25rem .5rem 0; font-family: var(--body); text-transform: none; letter-spacing: 0; font-size: .9375rem; }
 /* Native checks are too small a target beside 1rem inputs; scale and tint them. */
 label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); }
-button[type="submit"] {
-  margin-top: 2rem;
-  padding: .9rem 1.75rem;
-  background: var(--accent);
-  color: var(--on-accent);
-  border: 0;
-  border-radius: 0;
-  font: 700 .8125rem var(--display);
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  cursor: pointer;
-}
-button[type="submit"]:active { transform: translateY(1px); }
+form button[type="submit"] { margin-top: 2rem; }
 button[disabled] { opacity: .6; cursor: progress; }
 .hint { color: var(--muted); font-size: .8125rem; margin: .4rem 0 0; max-width: 60ch; }
 /* The duplicate warning: an aside beside the field, never a blocking dialog. */
@@ -1174,8 +1186,9 @@ button[disabled] { opacity: .6; cursor: progress; }
 #similar li { margin-bottom: .75rem; font-size: .9375rem; }
 #similar pre { margin: .5rem 0 0; padding: .6rem .75rem; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; font-size: .8125rem; }
 .similar-lead { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
-#status { margin-top: 1.25rem; }
-#status.error { color: var(--accent-fg); }
+#status { margin-top: 1.25rem; max-width: 68ch; }
+/* Errors share the duplicate warning's vocabulary: an accent-ruled aside. */
+#status.error { color: var(--accent-fg); padding: .75rem 1.25rem; background: var(--surface); border-left: 3px solid var(--accent); }
 /* The fault the status names, marked at the field itself. Cleared on input. */
 form [aria-invalid="true"] { border-color: var(--accent); }
 #no-results { color: var(--muted); }
@@ -1200,6 +1213,10 @@ form [aria-invalid="true"] { border-color: var(--accent); }
   .hero-counts a { padding: 1rem 1.25rem; }
   .grid { grid-template-columns: minmax(0, 1fr); }
   header.site { height: auto; padding-block: .75rem; flex-wrap: wrap; }
+  /* One scrollable row, like the install tab strip, instead of a stack of
+     wrapped rows eating a third of the first screen. */
+  .utility { flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 1rem; font-size: .8125rem; padding-bottom: 2px; }
+  .utility::-webkit-scrollbar { display: none; }
   .strip { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
 }
 @media (prefers-reduced-motion: reduce) {

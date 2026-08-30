@@ -312,7 +312,7 @@ describe("contribute page", () => {
 
     // Detail pages are not <section>, so the frame has to come from .detail.
     expect(await read(root, "dist/site/styles.css")).toContain(
-      ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }",
+      ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); width: 100%; }",
     );
     for (const file of ["request.html", "requests.html", "contribute.html", "plugins/pr-review.html"]) {
       expect(await read(root, `dist/site/${file}`)).toContain('<article class="detail">');
@@ -350,8 +350,9 @@ describe("open requests", () => {
     expect(page).not.toContain("A snapshot, built");
     expect(page.match(/the open issues on GitHub/g)).toHaveLength(1);
     expect((await readJson(root, "dist/site/index.json")).requests).toBeNull();
-    // A missing number is honest; a zero would be a lie.
-    expect(home).not.toContain("Open requests");
+    // A missing number is honest; a zero would be a lie. The nav still links
+    // the queue page from everywhere, so it is the count that must be absent.
+    expect(home).not.toContain('count-label">Open requests');
     expect(home).not.toContain("Requests in flight");
   });
 

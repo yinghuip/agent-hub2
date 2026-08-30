@@ -213,6 +213,24 @@ checkboxes are 1.15rem with `accent-color: var(--accent)`; and "Recently added"
 renders only from three entries up, because below that it repeats the catalog
 card for card.
 
+A second audit pass tightened the states and edges. The footer sits at the
+viewport bottom on short pages (flex column on `body`), so the queue page's
+unread state no longer floats over bare ground. The utility nav item for the
+queue reads "Open requests" — the page's own title — instead of sitting next
+to "Request a skill" as a near-duplicate, and on phones the nav is one
+scrollable row in the tab strip's manner rather than a stack of wrapped lines.
+Plugin pages carry a "← Catalog" crumb. The primary action is one recipe
+(`.cta` and the submit button share fill, metrics and the `--accent-down`
+hover). Duplicate-warning links open in a new tab with `rel="noopener"` and
+say so, because that aside invites a look elsewhere and following it must not
+cost the typed request. `#status.error` takes the same accent-ruled aside
+treatment as the duplicate warning, so the form has one error vocabulary. The
+lead tile's two-column span waits for a catalog of three, and the queue page's
+intro speaks of examples, not of the line convention the form no longer shows.
+Deliberately unchanged: the rail keeps its dark surface in both modes (it is
+the reference's signature structure), and tile titles stay uppercase (the
+display treatment is the voice of the whole site).
+
 Breakpoints stay `sm 640 / md 768 / lg 1024 / xl 1280 / 2xl 1536`.
 
 ## 7. Page compositions
