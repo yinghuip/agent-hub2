@@ -2,6 +2,7 @@ import { roleIcon } from "./assets.ts";
 import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
 import { REQUEST_LABELS, REQUEST_SECTIONS, renderRequestIssue } from "./request.ts";
+import { PROBLEM_HEADING, issueText, pluginCandidates, rankSimilar, requestText } from "./similar.ts";
 import { ROLES } from "./roles.ts";
 import type { HubConfig } from "./schema.ts";
 
@@ -387,7 +388,7 @@ function contributePage(config: HubConfig, contributingHtml: string | null): str
   return layout(config, `Contribute a skill - ${config.displayName}`, body, 0);
 }
 
-function requestPage(config: HubConfig): string {
+function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number): string {
   const repo = JSON.stringify(config.repo);
   const body = `<article class="detail">
 <h1>Request a skill</h1>
@@ -395,7 +396,8 @@ function requestPage(config: HubConfig): string {
 <strong>your own</strong> account, so you stay reachable for questions and get notified when the skill ships.</p>
 
 <form id="request">
-  <label>Skill title<input name="title" required placeholder="PR review checklist"></label>
+  <label>Skill title<input name="title" required placeholder="PR review checklist" autocomplete="off"></label>
+  <div id="similar" role="status" hidden></div>
 
   <fieldset aria-required="true"><legend>Which roles is this for?</legend>
     ${ROLES.map(
@@ -439,10 +441,90 @@ It carries over whatever you have typed here.</p>
 
   var REPO = ${repo};
   var API = "https://api.github.com/repos/" + REPO + "/issues";
+  var QUEUE = API + "?state=open&per_page=100&labels=" + encodeURIComponent(REQUEST_LABELS[0]);
   var form = document.getElementById("request");
   var status = document.getElementById("status");
   var fallback = document.getElementById("fallback");
   var button = form.querySelector("button");
+  var similar = document.getElementById("similar");
+
+  // The catalog, and the same ranker the request bot runs, so a hint here and a
+  // "possible duplicate" label two minutes later can never disagree.
+  var CANDIDATES = ${embedJson(pluginCandidates(plugins, "."))};
+  var FLOOR = ${floor};
+  var PROBLEM_HEADING = ${embedJson(PROBLEM_HEADING)};
+  var rankSimilar = ${rankSimilar.toString()};
+  var requestText = ${requestText.toString()};
+  var issueText = ${issueText.toString()};
+  var acknowledged = false;
+
+  function esc(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function show(html) {
+    similar.innerHTML = html;
+    similar.hidden = false;
+  }
+
+  /** While typing: the single closest skill, with the command that installs it. */
+  function hint(query) {
+    var matches = rankSimilar(query, CANDIDATES, FLOOR, 1);
+    if (matches.length === 0) { similar.hidden = true; similar.innerHTML = ""; return; }
+    var match = matches[0];
+    show('<p class="similar-lead">This may already exist</p>' +
+      '<p><a href="' + esc(match.url) + '">' + esc(match.name) + "</a> — " + esc(match.description) + "</p>" +
+      "<pre>" + esc(match.install.claudeCode) + "</pre>" +
+      '<p class="hint"><a href="' + esc(match.url) + '">Read what it does</a> before writing this one out.</p>');
+  }
+
+  form.elements.title.addEventListener("input", function () {
+    hint(requestText(form.elements.title.value, ""));
+  });
+  // The paraphrase usually lives in the problem statement, so score again once
+  // it is written — on blur, not mid-sentence.
+  form.elements.problem.addEventListener("blur", function () {
+    hint(requestText(form.elements.title.value, form.elements.problem.value));
+  });
+
+  /** Open requests, which no build can bake in. Failure is silent: the catalog half still works. */
+  function queue(token) {
+    return fetch(QUEUE, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: "Bearer " + token,
+        "X-GitHub-Api-Version": "2022-11-28"
+      }
+    }).then(function (response) {
+      return response.ok ? response.json() : [];
+    }).then(function (issues) {
+      return (issues || []).filter(function (issue) {
+        return !issue.pull_request;
+      }).map(function (issue) {
+        return {
+          kind: "request",
+          ref: String(issue.number),
+          name: String(issue.title).replace(/^skill request:\\s*/i, "").trim(),
+          text: issueText(issue.title, issue.body || "", PROBLEM_HEADING),
+          description: "",
+          url: issue.html_url
+        };
+      });
+    }).catch(function () {
+      return [];
+    });
+  }
+
+  function interstitial(matches) {
+    var items = matches.map(function (match) {
+      var link = '<a href="' + esc(match.url) + '">' + esc(match.name) + "</a>";
+      if (match.kind === "request") {
+        return "<li>" + link + " — an open request for something close. Add your scenarios there instead.</li>";
+      }
+      return "<li>" + link + " — " + esc(match.description) + "<pre>" + esc(match.install.claudeCode) + "</pre></li>";
+    });
+    show('<p class="similar-lead">Some of this may already exist</p><ul>' + items.join("") + "</ul>");
+  }
 
   function say(message, kind) {
     status.textContent = message;
@@ -493,6 +575,10 @@ It carries over whatever you have typed here.</p>
   }
 
   function announce(issue) {
+    acknowledged = false;
+    button.textContent = "Create the request";
+    similar.hidden = true;
+    similar.innerHTML = "";
     say("Request opened as ");
     var link = document.createElement("a");
     link.href = issue.html_url;
@@ -503,13 +589,7 @@ It carries over whatever you have typed here.</p>
     status.appendChild(document.createTextNode(". Watch that issue for progress."));
   }
 
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-    var answer = answers();
-    var problem = complain(answer);
-    if (problem) { say(problem, "error"); return; }
-
-    var token = String(new FormData(form).get("token") || "");
+  function post(answer, token) {
     var issue = renderRequestIssue(answer);
     button.disabled = true;
     say("Creating your request on GitHub…");
@@ -533,6 +613,30 @@ It carries over whatever you have typed here.</p>
     }).catch(function () {
       button.disabled = false;
       say("Could not reach GitHub. Check your connection, or use the GitHub form below.", "error");
+    });
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var answer = answers();
+    var problem = complain(answer);
+    if (problem) { say(problem, "error"); return; }
+
+    var token = String(new FormData(form).get("token") || "");
+    if (acknowledged) { post(answer, token); return; }
+
+    button.disabled = true;
+    say("Checking what already exists…");
+    queue(token).then(function (open) {
+      button.disabled = false;
+      var matches = rankSimilar(requestText(answer.title, answer.problem), CANDIDATES.concat(open), FLOOR, 3);
+      // Never a block: the GitHub form below would sidestep one anyway, and a
+      // wrong match that stops a real request costs more than a duplicate issue.
+      if (matches.length === 0) { post(answer, token); return; }
+      acknowledged = true;
+      interstitial(matches);
+      button.textContent = "Request anyway";
+      say("Look at these first. The button now sends your request as written.");
     });
   });
 })();
@@ -801,6 +905,13 @@ button[type="submit"] {
 button[type="submit"]:active { transform: translateY(1px); }
 button[disabled] { opacity: .6; cursor: progress; }
 .hint { color: var(--muted); font-size: .8125rem; margin: .4rem 0 0; max-width: 60ch; }
+/* The duplicate warning: an aside beside the field, never a blocking dialog. */
+#similar { margin-top: .75rem; padding: 1rem 1.25rem; background: var(--surface); border-left: 3px solid var(--accent); max-width: 68ch; }
+#similar p { margin: 0 0 .5rem; font-size: .9375rem; }
+#similar ul { margin: 0; padding-left: 1.1rem; }
+#similar li { margin-bottom: .75rem; font-size: .9375rem; }
+#similar pre { margin: .5rem 0 0; padding: .6rem .75rem; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; font-size: .8125rem; }
+.similar-lead { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
 #status { margin-top: 1.25rem; }
 #status.error { color: var(--accent-fg); }
 #no-results { color: var(--muted); }
@@ -838,7 +949,7 @@ export function generateSite(analysis: Analysis, config: HubConfig): Map<string,
   const files = new Map<string, string>();
   files.set("dist/site/index.json", `${JSON.stringify(catalogIndex(analysis, config), null, 2)}\n`);
   files.set("dist/site/index.html", homePage(analysis, config));
-  files.set("dist/site/request.html", requestPage(config));
+  files.set("dist/site/request.html", requestPage(config, analysis.plugins, config.similarityFloor));
   // Always emitted: the contribute path exists whether or not a guide file does.
   files.set("dist/site/contribute.html", contributePage(config, analysis.contributingHtml));
   files.set("dist/site/styles.css", STYLES);

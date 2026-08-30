@@ -33,6 +33,12 @@ GitHub Pages is the catalog. There is no backend service anywhere.
   `renderRequestIssue` writes the issue body and `parseSkillRequest` reads it
   back; the two are inverses, tested by round-trip. Approving it with the label in
   `agent-hub.config.json` (`approvalLabel`) triggers generation.
+- **Possible duplicate** — a request that reads like a published skill or an
+  open request. Scored by `rankSimilar` (a Dice coefficient over token sets,
+  floored by `similarityFloor`), judged by an agent as *duplicate*, *extend* or
+  *distinct*, and surfaced as a comment plus the `possible-duplicate` label. The
+  same ranker runs in the catalog's request form, embedded verbatim, so the two
+  can never disagree. Advisory only: nothing is ever closed automatically.
 - **Stale** — no update for `staleAfterDays` (6 months). A badge only; nothing
   is auto-removed.
 

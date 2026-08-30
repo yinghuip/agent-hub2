@@ -57,6 +57,21 @@ jobs:
             echo 'REQUEST_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      # Recomputed here rather than read back from the on-open check: approval can
+      # come days later, and only the catalog as it stands now can be extended.
+      - name: Check what already exists
+        id: similar
+        run: |
+          node packages/cli/bin/agent-hub.js find-similar \
+            --title "$(jq -r .request.title /tmp/request.json)" \
+            --problem "$(jq -r .request.problem /tmp/request.json)" \
+            --json > /tmp/shortlist.json
+          {
+            echo 'shortlist<<SHORTLIST_EOF'
+            cat /tmp/shortlist.json
+            echo 'SHORTLIST_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Generate the plugin
         uses: anthropics/claude-code-action@v1
         with:
@@ -67,7 +82,16 @@ jobs:
             The structured request (already validated) is:
             ${{ steps.request.outputs.request }}
 
+            Published skills that already read like this request:
+            ${{ steps.similar.outputs.shortlist }}
+
             Rules:
+            - Read every shortlisted plugin before writing anything. If one already covers the
+              request, do not add a second plugin that overlaps it: amend that plugin instead —
+              extend its SKILL.md to handle the request's scenarios, bump its semver version,
+              and open the PR from skill/<existing-name>-extended titled
+              "Extend <existing-name> for #${{ github.event.issue.number }}". Explain the call in
+              the PR body under "Why extend, not add". Only create a new plugin when none fit.
             - Read CONTRIBUTING.md and copy the shape of plugins/pr-review-checklist exactly.
             - Create plugins/<kebab-name>/ with plugin.yaml, README.md and skills/<skill>/SKILL.md.
               Set roles to the request's roles verbatim, ownerTeam to the request's team, version to 1.0.0.
