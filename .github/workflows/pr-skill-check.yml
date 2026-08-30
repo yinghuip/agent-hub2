@@ -1,0 +1,173 @@
+name: Check skills and plugins on a PR
+
+# Skills usually arrive through the request queue, where generate-skill.yml
+# writes the evals and checks the catalog for duplicates before a PR is even
+# opened. A skill contributed directly as a pull request skips all of that, so
+# this gate applies the same two checks to hand-authored contributions:
+# every changed skill must carry well-formed evals, and a new skill is ranked
+# against the published catalog so reviewers see likely duplicates.
+#
+# This workflow only reads. It runs on the PR's code — including a fork's —
+# so it holds no write power; pr-skill-comment.yml picks up the report from
+# the artifact and does the talking.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plugins/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # A skill is the unit of review here. plugins/<p>/skills/<s>/ directories
+      # touched by the diff are the changed skills; a SKILL.md added (not
+      # modified) marks the skill as new, and a plugin.yaml added marks the
+      # plugin as new. Deleted skills need no eval or duplicate check.
+      - name: Detect changed skills
+        id: detect
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=50 origin "$BASE"
+          git diff --name-only "origin/$BASE...HEAD" -- plugins/ > /tmp/changed.txt
+
+          grep -E '^plugins/[^/]+/skills/[^/]+/' /tmp/changed.txt \
+            | cut -d/ -f1-4 | sort -u > /tmp/skill-dirs.txt || true
+          # Keep only skills that still exist on this branch.
+          : > /tmp/skills.txt
+          while IFS= read -r dir; do
+            [ -d "$dir" ] && echo "$dir" >> /tmp/skills.txt
+          done < /tmp/skill-dirs.txt
+
+          git diff --name-only --diff-filter=A "origin/$BASE...HEAD" -- \
+            'plugins/*/skills/*/SKILL.md' | cut -d/ -f1-4 | sort -u > /tmp/new-skills.txt || true
+          git diff --name-only --diff-filter=A "origin/$BASE...HEAD" -- \
+            'plugins/*/plugin.yaml' 'plugins/*/plugin.yml' | cut -d/ -f1-2 | sort -u > /tmp/new-plugins.txt || true
+
+          echo "count=$(wc -l < /tmp/skills.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      # Same bar generate-skill.yml holds machine-drafted skills to: evals are
+      # the contract a skill promises to keep, so a hand-authored skill without
+      # them is not reviewable. This is the one hard failure in the gate.
+      - name: Check the evals
+        id: evals
+        if: steps.detect.outputs.count != '0'
+        run: |
+          failed=0
+          : > /tmp/eval-report.md
+          while IFS= read -r skill; do
+            evals="$skill/evals/evals.json"
+            if [ ! -f "$evals" ]; then
+              echo "- ❌ \`$skill\` has no \`evals/evals.json\` — see CONTRIBUTING.md for the schema" >> /tmp/eval-report.md
+              echo "::error::$skill has no evals/evals.json"
+              failed=1
+              continue
+            fi
+            if jq -e '.skill_name and (.evals | length > 0) and all(.evals[];
+              .prompt and .expected_output and (.expectations | length > 0))' "$evals" > /dev/null 2>&1; then
+              echo "- ✅ \`$skill\` — $(jq '.evals | length' "$evals") eval(s), well formed" >> /tmp/eval-report.md
+            else
+              echo "- ❌ \`$evals\` — every eval needs a prompt, an expected_output and at least one expectation" >> /tmp/eval-report.md
+              echo "::error file=$evals::every eval needs a prompt, an expected_output and at least one expectation"
+              failed=1
+            fi
+          done < /tmp/skills.txt
+          # Recorded, not raised: the duplicate check and the report still run,
+          # so the reviewer sees the whole picture, and the last step fails the
+          # job once everything worth knowing is in the artifact.
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+
+      # The same duplicate check a request gets on open, aimed at the catalog
+      # as this branch sees it. The skill's own plugin is filtered out — the
+      # branch already contains the skill being judged, and a skill is not a
+      # duplicate of itself. Advisory only: wording overlap needs a human
+      # verdict, and the reviewers this repo already assigns are that human.
+      - name: Check new skills for duplicates
+        if: steps.detect.outputs.count != '0'
+        run: |
+          : > /tmp/dup-report.md
+          rm -f /tmp/has-duplicates
+          while IFS= read -r skill; do
+            [ -n "$skill" ] || continue
+            plugin=$(echo "$skill" | cut -d/ -f2)
+            name=$(basename "$skill")
+            desc=$(sed -n '/^---$/,/^---$/p' "$skill/SKILL.md" | sed -n 's/^description:[[:space:]]*//p' | head -1)
+            if ! node packages/cli/bin/agent-hub.js find-similar \
+              --title "$name" --problem "${desc:-$name}" --json > /tmp/similar.json; then
+              # Saying "nothing similar" after a failed check would be a false
+              # green; say what actually happened instead.
+              echo "- ⚠️ \`$skill\` — the similarity check failed, so nothing was compared; see the workflow log" >> /tmp/dup-report.md
+              continue
+            fi
+            matches=$(jq --arg self "$plugin" '[.[] | select(.ref != $self)]' /tmp/similar.json)
+            if [ "$(echo "$matches" | jq 'length')" != "0" ]; then
+              touch /tmp/has-duplicates
+              {
+                echo "- ⚠️ \`$skill\` reads like existing entries:"
+                echo "$matches" | jq -r '.[] | "  - `\(.ref)` (\(.kind), score \(.score)) — \(.description // "no description")"'
+              } >> /tmp/dup-report.md
+            else
+              echo "- ✅ \`$skill\` — nothing similar in the catalog" >> /tmp/dup-report.md
+            fi
+          done < /tmp/new-skills.txt
+
+      # Everything the commenter needs travels in the artifact: the report,
+      # the PR number, and the labels the PR has earned. The commenter holds
+      # the write token, so nothing here can be smuggled past it except text.
+      - name: Assemble the report
+        if: always()
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p /tmp/review
+          echo "$PR" > /tmp/review/pr-number.txt
+
+          : > /tmp/review/labels.txt
+          [ -s /tmp/new-skills.txt ] && echo "new-skill" >> /tmp/review/labels.txt
+          [ -s /tmp/new-plugins.txt ] && echo "new-plugin" >> /tmp/review/labels.txt
+          [ -f /tmp/has-duplicates ] && echo "possible-duplicate" >> /tmp/review/labels.txt
+
+          count=${{ steps.detect.outputs.count || 0 }}
+          {
+            echo "<!-- agent-hub:pr-skill-review -->"
+            echo "## Skill review"
+            echo
+            if [ "$count" = "0" ]; then
+              echo "This change touches \`plugins/\` but no skill, so there is nothing to check here."
+            else
+              echo "### Evals"
+              cat /tmp/eval-report.md 2>/dev/null || echo "The eval check did not run — see the workflow log."
+              if [ -s /tmp/new-skills.txt ]; then
+                echo
+                echo "### Similar published work"
+                cat /tmp/dup-report.md 2>/dev/null || echo "The duplicate check did not run — see the workflow log."
+              fi
+            fi
+          } > /tmp/review/report.md
+          cat /tmp/review/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the report for the commenter
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-skill-review
+          path: /tmp/review
+
+      - name: Fail on eval errors
+        if: steps.evals.outputs.failed == '1'
+        run: |
+          echo "::error::one or more changed skills have missing or malformed evals — see the report above"
+          exit 1
