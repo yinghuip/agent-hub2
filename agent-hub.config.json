@@ -1,0 +1,18 @@
+{
+  "name": "agent-hub",
+  "displayName": "Agent Hub",
+  "description": "The internal marketplace for agent skills. Browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
+  "repo": "yinghuip/agent-hub2",
+  "siteUrl": "https://yinghuip.github.io/agent-hub2",
+  "owner": {
+    "name": "Platform Team",
+    "email": "platform@example.com"
+  },
+  "staleAfterDays": 180,
+  "recentlyAddedDays": 30,
+  "recentlyAddedLimit": 5,
+  "approvalLabel": "approved-for-generation",
+  "platformReviewers": [
+    "yinghuip"
+  ]
+}

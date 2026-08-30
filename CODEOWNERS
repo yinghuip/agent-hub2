@@ -1,0 +1,8 @@
+# The platform team owns the pipeline: CLI, workflows, catalog build.
+/packages/            @yinghuip
+/.github/             @yinghuip
+/scripts/             @yinghuip
+/agent-hub.config.json @yinghuip
+
+# Each plugin is owned by the team that requested or contributed it.
+/plugins/pr-review-checklist/ @yinghuip

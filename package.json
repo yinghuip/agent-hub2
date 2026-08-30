@@ -1,0 +1,17 @@
+{
+  "name": "agent-hub",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run -w @agent-hub/cli build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "hub": "node packages/cli/bin/agent-hub.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4",
+    "@types/node": "^22.9.0"
+  }
+}
