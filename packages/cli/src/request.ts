@@ -5,30 +5,30 @@ export type SkillRequest = {
   roles: Role[];
   problem: string;
   scenarios: { scenario: string; expected: string }[];
-  team: string;
 };
 
 export type RequestError = { code: "missing-section" | "invalid-role" | "no-scenarios" | "scenario-format"; field: string; message: string };
 
 export type ParseResult = { ok: true; request: SkillRequest } | { ok: false; errors: RequestError[] };
 
+/**
+ * One row per answer: the `### Heading` the parser reads back, and the issue
+ * form's field `id`, which doubles as the query parameter the catalog's request
+ * form prefills GitHub's form with. Both live here so the page, the template
+ * and the parser cannot drift apart.
+ */
 const SECTIONS = {
-  title: "Skill title",
-  roles: "Roles",
-  problem: "What problem should this skill solve?",
-  scenarios: "Example scenarios and expected results",
-  team: "Your team",
+  title: { heading: "Skill title", param: "skill-title" },
+  roles: { heading: "Roles", param: "roles" },
+  problem: { heading: "What problem should this skill solve?", param: "problem" },
+  scenarios: { heading: "Example scenarios and expected results", param: "scenarios" },
 } as const;
 
 type Field = keyof typeof SECTIONS;
 
-/**
- * The section order, shared with the catalog's request form so the page and
- * the parser cannot drift apart.
- */
-export const REQUEST_SECTIONS: { field: Field; heading: string }[] = (Object.keys(SECTIONS) as Field[]).map(
-  (field) => ({ field, heading: SECTIONS[field] }),
-);
+export const REQUEST_SECTIONS: { field: Field; heading: string; param: string }[] = (
+  Object.keys(SECTIONS) as Field[]
+).map((field) => ({ field, heading: SECTIONS[field].heading, param: SECTIONS[field].param }));
 
 /** Labels every request carries, so triage can find them. */
 export const REQUEST_LABELS = ["skill-request", "needs-triage"];
@@ -90,15 +90,18 @@ function parseScenarios(text: string): { scenarios: SkillRequest["scenarios"]; e
 /**
  * Parse a skill-request issue body into the structured request the generation
  * agent works from. Pure: no GitHub calls, no filesystem.
+ *
+ * Sections the form no longer asks for are ignored rather than rejected, so
+ * requests opened before a field was dropped still parse.
  */
 export function parseSkillRequest(body: string): ParseResult {
   const sections = splitSections(body);
   const errors: RequestError[] = [];
-  const value = (field: Field) => sections.get(SECTIONS[field])?.trim() ?? "";
+  const value = (field: Field) => sections.get(SECTIONS[field].heading)?.trim() ?? "";
 
   for (const field of Object.keys(SECTIONS) as Field[]) {
     if (value(field) === "") {
-      errors.push({ code: "missing-section", field, message: `"${SECTIONS[field]}" is empty or missing` });
+      errors.push({ code: "missing-section", field, message: `"${SECTIONS[field].heading}" is empty or missing` });
     }
   }
 
@@ -126,7 +129,6 @@ export function parseSkillRequest(body: string): ParseResult {
       roles: rawRoles as Role[],
       problem: value("problem"),
       scenarios,
-      team: value("team"),
     },
   };
 }
@@ -137,15 +139,14 @@ export type RequestAnswers = {
   roles: string[];
   problem: string;
   scenarios: string;
-  team: string;
 };
 
 /**
- * The issue a submitted request becomes; the inverse of `parseSkillRequest`.
+ * The issue body a request becomes; the inverse of `parseSkillRequest`.
  *
- * The catalog's request form embeds this function verbatim rather than
- * reimplementing it, so keep it free of imports: it may only reach for
- * `REQUEST_SECTIONS` and `REQUEST_LABELS`, which the page embeds alongside it.
+ * GitHub's issue form writes this body, not us — so this is the executable
+ * specification of that output, held to it by the round-trip test. Change the
+ * template's fields and this must change with them.
  */
 export function renderRequestIssue(answers: RequestAnswers): { title: string; body: string; labels: string[] } {
   const values: Record<string, string> = {
@@ -153,7 +154,6 @@ export function renderRequestIssue(answers: RequestAnswers): { title: string; bo
     roles: answers.roles.join(", "),
     problem: answers.problem,
     scenarios: answers.scenarios,
-    team: answers.team,
   };
 
   const body = REQUEST_SECTIONS.map(

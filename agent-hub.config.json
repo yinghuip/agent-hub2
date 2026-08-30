@@ -12,6 +12,7 @@
   "recentlyAddedDays": 30,
   "recentlyAddedLimit": 5,
   "approvalLabel": "approved-for-generation",
+  "defaultOwnerTeam": "platform",
   "similarityFloor": 0.3,
   "platformReviewers": [
     "yinghuip"

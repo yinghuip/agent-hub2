@@ -19,6 +19,7 @@ jobs:
     outputs:
       approval-label: ${{ steps.read.outputs.approval-label }}
       reviewers: ${{ steps.read.outputs.reviewers }}
+      owner-team: ${{ steps.read.outputs.owner-team }}
     steps:
       - uses: actions/checkout@v4
       - id: read
@@ -26,6 +27,7 @@ jobs:
           {
             echo "approval-label=$(jq -r .approvalLabel agent-hub.config.json)"
             echo "reviewers=$(jq -r '.platformReviewers | join(",")' agent-hub.config.json)"
+            echo "owner-team=$(jq -r .defaultOwnerTeam agent-hub.config.json)"
           } >> "$GITHUB_OUTPUT"
 
   generate:
@@ -94,9 +96,13 @@ jobs:
               the PR body under "Why extend, not add". Only create a new plugin when none fit.
             - Read CONTRIBUTING.md and copy the shape of plugins/pr-review-checklist exactly.
             - Create plugins/<kebab-name>/ with plugin.yaml, README.md and skills/<skill>/SKILL.md.
-              Set roles to the request's roles verbatim, ownerTeam to the request's team, version to 1.0.0.
+              Set roles to the request's roles verbatim, ownerTeam to ${{ needs.config.outputs.owner-team }},
+              version to 1.0.0. Requesters are not asked who will own the skill; a reviewer reassigns it on
+              the pull request if it belongs to another team.
             - Portable subset only: no hooks/, commands/ or agents/ directories.
-            - Add a CODEOWNERS line for the new plugin directory owned by the requesting team.
+            - Add a CODEOWNERS line for the new plugin directory owned by ${{ needs.config.outputs.reviewers }},
+              each handle prefixed with @ — CODEOWNERS needs resolvable handles, which the requester's
+              free-text answer never was.
             - Run `node packages/cli/bin/agent-hub.js build` and commit the generated manifests, then
               `node packages/cli/bin/agent-hub.js validate` and fix anything it reports.
             - Self-evaluate: for each scenario in the request, walk the SKILL.md and state whether it

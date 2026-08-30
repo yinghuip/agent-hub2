@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { REQUEST_SECTIONS, parseSkillRequest, renderRequestIssue } from "../src/index.ts";
 
@@ -9,7 +10,6 @@ const body = (overrides: Record<string, string> = {}) => {
       "Reviewers forget the team checklist, so PRs land without accessibility checks.",
     "Example scenarios and expected results":
       "Scenario: A PR adds a new form field\nExpected: The skill flags the missing label\n\nScenario: A PR only touches tests\nExpected: The skill says no checklist items apply",
-    "Your team": "Web",
     ...overrides,
   };
   return Object.entries(sections)
@@ -31,7 +31,6 @@ describe("parseSkillRequest", () => {
           { scenario: "A PR adds a new form field", expected: "The skill flags the missing label" },
           { scenario: "A PR only touches tests", expected: "The skill says no checklist items apply" },
         ],
-        team: "Web",
       },
     });
   });
@@ -49,10 +48,18 @@ describe("parseSkillRequest", () => {
   });
 
   it("reports each missing or unanswered section", () => {
-    const result = parseSkillRequest(body({ "Your team": "_No response_", "What problem should this skill solve?": "" }));
+    const result = parseSkillRequest(body({ "Skill title": "_No response_", "What problem should this skill solve?": "" }));
     expect(result.ok).toBe(false);
     expect(!result.ok && result.errors.map((e) => e.code)).toEqual(["missing-section", "missing-section"]);
-    expect(!result.ok && result.errors.map((e) => e.field)).toEqual(["problem", "team"]);
+    expect(!result.ok && result.errors.map((e) => e.field)).toEqual(["title", "problem"]);
+  });
+
+  // Requests opened while the form still asked who would own the skill must not
+  // become unparseable the day the field is dropped.
+  it("ignores sections the form no longer asks for", () => {
+    const result = parseSkillRequest(`${body()}\n### Your team\n\nWeb\n`);
+    expect(result.ok).toBe(true);
+    expect(result.ok && Object.keys(result.request)).toEqual(["title", "roles", "problem", "scenarios"]);
   });
 
   it("requires at least one scenario with an expected result", () => {
@@ -81,7 +88,6 @@ describe("renderRequestIssue", () => {
     problem: "Reviewers forget the team checklist, so PRs land without accessibility checks.",
     scenarios:
       "Scenario: A PR adds a new form field\nExpected: The skill flags the missing label\n\nScenario: A PR only touches tests\nExpected: The skill says no checklist items apply",
-    team: "Web",
   };
 
   it("round-trips through the parser the generation agent uses", () => {
@@ -95,7 +101,6 @@ describe("renderRequestIssue", () => {
           { scenario: "A PR adds a new form field", expected: "The skill flags the missing label" },
           { scenario: "A PR only touches tests", expected: "The skill says no checklist items apply" },
         ],
-        team: "Web",
       },
     });
   });
@@ -115,13 +120,21 @@ describe("renderRequestIssue", () => {
   });
 
   it("exposes the section headings the request form renders against", () => {
-    expect(REQUEST_SECTIONS.map((section) => section.field)).toEqual([
-      "title",
-      "roles",
-      "problem",
-      "scenarios",
-      "team",
-    ]);
+    expect(REQUEST_SECTIONS.map((section) => section.field)).toEqual(["title", "roles", "problem", "scenarios"]);
     expect(REQUEST_SECTIONS.map((section) => section.heading)).toContain("Example scenarios and expected results");
+  });
+
+  // The catalog's request form prefills GitHub's form with these parameters. If
+  // an id here stops matching one the template declares, that answer is silently
+  // dropped and the requester lands on a half-empty form.
+  it("names a prefill parameter for every field the issue template declares", async () => {
+    const template = await readFile(
+      new URL("../../../.github/ISSUE_TEMPLATE/skill-request.yml", import.meta.url),
+      "utf8",
+    );
+    const ids = [...template.matchAll(/^\s{4}id:\s*(\S+)$/gm)].map((match) => match[1]);
+    expect(ids).toEqual(REQUEST_SECTIONS.map((section) => section.param));
+    // Prefill fills inputs and textareas; a dropdown would silently drop its answer.
+    expect(template).not.toContain("type: dropdown");
   });
 });

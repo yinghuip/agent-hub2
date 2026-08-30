@@ -38,6 +38,8 @@ export const configSchema = z
     recentlyAddedDays: z.number().int().positive().default(30),
     recentlyAddedLimit: z.number().int().positive().default(5),
     approvalLabel: z.string().min(1).default("approved-for-generation"),
+    /** `ownerTeam` for generated plugins; requesters are not asked for one. */
+    defaultOwnerTeam: z.string().min(1).default("platform"),
     /**
      * How alike two skills must read before the catalog and the request bot
      * call them possible duplicates. A Dice coefficient over token sets, so a
