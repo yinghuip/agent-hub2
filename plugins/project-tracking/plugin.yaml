@@ -1,0 +1,16 @@
+name: project-tracking
+description: Issues, boards, estimates, standups and sprint ceremonies.
+version: 1.0.0
+ownerTeam: platform
+author:
+  name: Platform Team
+  email: platform@example.com
+roles:
+  - Business Analyst
+  - Product Owner
+keywords:
+  - user-story
+  - invest
+  - definition-of-ready
+  - backlog-refinement
+  - acceptance-criteria

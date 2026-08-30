@@ -1,0 +1,17 @@
+{
+  "skill_name": "review-user-story",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Can you review this user story from Azure DevOps with the INVEST framework and tell me if it's ready for sprint planning? Work item: https://dev.azure.com/contoso/webapp/_workitems/edit/12345. Description: 'As a user, I want the search page to be better.' Acceptance criteria: 'Search should work well and be fast.'",
+      "expected_output": "The story is not ready — its INVEST average score falls below 4.",
+      "files": [],
+      "expectations": [
+        "Scores all six INVEST criteria (Independent, Negotiable, Valuable, Estimable, Small, Testable) with a numeric score for each.",
+        "Reports the average INVEST score as a number.",
+        "States the story is not ready and ties that verdict to the average score being below 4.",
+        "Names the weak criteria (such as untestable or missing acceptance criteria) rather than only giving a verdict."
+      ]
+    }
+  ]
+}

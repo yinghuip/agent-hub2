@@ -7,6 +7,12 @@
       "source": "./plugins/pr-review-checklist",
       "description": "Reviews a pull request against the team's checklist for tests, accessibility and rollback safety.",
       "version": "1.0.0"
+    },
+    {
+      "name": "project-tracking",
+      "source": "./plugins/project-tracking",
+      "description": "Issues, boards, estimates, standups and sprint ceremonies.",
+      "version": "1.0.0"
     }
   ]
 }

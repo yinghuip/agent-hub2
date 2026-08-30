@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schema/v1.0.0/plugin.json",
+  "name": "project-tracking",
+  "description": "Issues, boards, estimates, standups and sprint ceremonies.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Platform Team",
+    "email": "platform@example.com"
+  },
+  "keywords": [
+    "user-story",
+    "invest",
+    "definition-of-ready",
+    "backlog-refinement",
+    "acceptance-criteria"
+  ]
+}
