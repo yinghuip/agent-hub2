@@ -37,6 +37,7 @@ function plugin(over: Partial<CatalogPlugin> & { name: string }): CatalogPlugin 
       claudeCode: `/plugin marketplace add acme/agent-hub\n/plugin install ${over.name}@agent-hub`,
       copilot: `/plugin install ${over.name}@agent-hub`,
       codex: `curl -fsSL https://example/install.sh | bash -s -- ${over.name} --tool codex`,
+      opencode: `curl -fsSL https://example/install.sh | bash -s -- ${over.name} --tool opencode`,
       universal: `curl -fsSL https://example/install.sh | bash -s -- ${over.name}`,
     },
     ...over,

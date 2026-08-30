@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Agent Hub — an internal marketplace for agent skills. Plugins live in this monorepo; a GitHub Pages catalog lets people browse and install them into Claude Code, GitHub Copilot, or OpenAI Codex. There is no backend service: GitHub Actions is the pipeline, GitHub Pages is the site, GitHub Issues is the request queue.
+Agent Hub — an internal marketplace for agent skills. Plugins live in this monorepo; a GitHub Pages catalog lets people browse and install them into Claude Code, GitHub Copilot, OpenAI Codex, or OpenCode. There is no backend service: GitHub Actions is the pipeline, GitHub Pages is the site, GitHub Issues is the request queue.
 
 Read `CONTEXT.md` before naming anything — it is the enforced vocabulary ("plugin", never "package"; "skill" is the user-facing word). Decisions and their reasons live in `docs/adr/`. Agent-workflow docs (issue tracker, triage labels) are indexed from `AGENTS.md`.
 

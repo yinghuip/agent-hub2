@@ -290,9 +290,9 @@ Title block (name in display, one-line description, stale label if applicable),
 then a **facts rule table**: version, owner, roles, last updated, skills. Rules
 between rows only, no border on every side, no dots as separators.
 
-Install is a four-tab block (Claude Code, Copilot, Codex, universal). Tabs
-because four stacked command blocks bury the README, and because a reader wants
-exactly one of the four. Each command sits in a mono block with a copy button;
+Install is a five-tab block (Claude Code, Copilot, Codex, OpenCode, universal).
+Tabs because five stacked command blocks bury the README, and because a reader
+wants exactly one of the five. Each command sits in a mono block with a copy button;
 the copy button is the only place a second interactive colour would tempt us,
 and it does not get one.
 

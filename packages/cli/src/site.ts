@@ -182,7 +182,7 @@ ${
       <button class="copy" type="button" aria-live="polite">Copy</button>
     </div>
     <p>Then install any skill by name. Copilot CLI reads the same commands, and every listing carries a
-    universal script for tools that do not.</p>
+    script install for Codex, OpenCode and any other tool that reads skill directories.</p>
   </div>
 </section>
 
@@ -320,6 +320,7 @@ const INSTALL_TABS: { label: string; key: keyof CatalogPlugin["install"] }[] = [
   { label: "Claude Code", key: "claudeCode" },
   { label: "GitHub Copilot", key: "copilot" },
   { label: "OpenAI Codex", key: "codex" },
+  { label: "OpenCode", key: "opencode" },
   { label: "Universal", key: "universal" },
 ];
 

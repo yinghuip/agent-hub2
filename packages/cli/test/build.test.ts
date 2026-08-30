@@ -135,6 +135,8 @@ describe("build", () => {
     // Copilot CLI reads the same marketplace format, so it takes the same commands.
     expect(install.copilot).toBe(install.claudeCode);
     expect(install.codex).toContain("pr-review");
+    expect(install.opencode).toContain("--tool opencode");
+    expect(install.opencode).toContain("pr-review");
     expect(install.universal).toContain("install.sh");
     expect(install.universal).toContain("pr-review");
   });
@@ -263,12 +265,12 @@ describe("catalog shell", () => {
     expect(home).toContain("Filter by role");
   });
 
-  it("gives the plugin page one tab per tool instead of four stacked blocks", async () => {
+  it("gives the plugin page one tab per tool instead of stacked blocks", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/plugins/pr-review.html");
 
-    for (const tool of ["Claude Code", "GitHub Copilot", "OpenAI Codex", "Universal"]) {
+    for (const tool of ["Claude Code", "GitHub Copilot", "OpenAI Codex", "OpenCode", "Universal"]) {
       expect(page).toContain(`data-tab="${tool}"`);
     }
     expect(page).toContain("/plugin install pr-review@agent-hub");
@@ -516,6 +518,7 @@ describe("accessibility contracts", () => {
     expect(page).toContain('id="panel-claude-code"');
     expect(page).toContain('role="tabpanel"');
     expect(page).toContain('aria-labelledby="tab-claude-code"');
+    expect(page).toContain('id="panel-opencode"');
     // One tab stop for the strip, so the arrow keys own movement within it.
     expect(page).toContain('tabindex="-1"');
     expect(page).toContain("ArrowRight");
