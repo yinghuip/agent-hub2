@@ -110,8 +110,6 @@ function homePage(analysis: Analysis, config: HubConfig): string {
   const recent = recentlyAdded
     .map((name) => plugins.find((plugin) => plugin.name === name))
     .filter((plugin): plugin is CatalogPlugin => Boolean(plugin));
-  const newest = plugins.slice().sort((a, b) => b.addedAt.localeCompare(a.addedAt))[0];
-
   const roleSections = populatedRoles
     .map((role) => {
       const inRole = plugins.filter((plugin) => plugin.roles.includes(role));
@@ -133,11 +131,6 @@ function homePage(analysis: Analysis, config: HubConfig): string {
   <aside class="hero-counts">
     <div><span class="count">${plugins.length}</span><span class="count-label">Skills</span></div>
     <div><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></div>
-    ${
-      newest
-        ? `<div><span class="count count-date">${formatDate(newest.addedAt)}</span><span class="count-label">Newest</span></div>`
-        : ""
-    }
     ${
       // Absent when the queue was not read: a missing number is honest, a 0 is a lie.
       requests
@@ -863,7 +856,6 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .hero-counts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .hero-counts div { background: var(--accent); color: var(--on-accent); padding: 1.25rem 1.5rem; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .count { font-size: 2.5rem; font-weight: 700; line-height: 1; }
-.count-date { font-size: 1.5rem; }
 .count-label { font-size: .75rem; letter-spacing: .14em; }
 
 /* Recently added: a reel, so it is not a second grid. */
