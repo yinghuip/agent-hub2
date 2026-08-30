@@ -143,11 +143,10 @@ function homePage(analysis: Analysis, config: HubConfig): string {
     <a href="#catalog"><span class="count">${plugins.length}</span><span class="count-label">Skills</span></a>
     <a href="#catalog"><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></a>
     ${
-      // Absent when the queue was not read: a missing number is honest, a 0 is
-      // a lie. The tool count stands in so the instrument always reads three.
+      // Absent when the queue was not read: a missing number is honest, a 0 is a lie.
       requests
         ? `<a href="./requests.html"><span class="count">${requests.length}</span><span class="count-label">Open requests</span></a>`
-        : `<a href="#install"><span class="count">3</span><span class="count-label">Tools</span></a>`
+        : ""
     }
   </aside>
 </section>

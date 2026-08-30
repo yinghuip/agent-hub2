@@ -231,10 +231,7 @@ Deliberately unchanged: the rail keeps its dark surface in both modes (it is
 the reference's signature structure), and tile titles stay uppercase (the
 display treatment is the voice of the whole site).
 
-The last refinement pass: the hero instrument always reads three blocks — the
-open-request count when the build read the queue, the tool count (the three
-tools the lede names, linking to the install band) when it did not — so the
-composition never depends on which build you are looking at. The catalog's
+The last refinement pass: the catalog's
 empty state carries a "Clear search and filter" action instead of being a
 wall. Tile title tooltips list the keywords search also matches, so a match on
 invisible text is explicable. Pages carry og: metadata for link unfurls, the
