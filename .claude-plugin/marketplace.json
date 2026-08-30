@@ -1,0 +1,28 @@
+{
+  "name": "agent-hub",
+  "owner": {
+    "name": "Platform Team",
+    "email": "platform@example.com"
+  },
+  "metadata": {
+    "description": "The internal marketplace for agent skills — browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "pr-review-checklist",
+      "source": "./plugins/pr-review-checklist",
+      "description": "Reviews a pull request against the team's checklist for tests, accessibility and rollback safety.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Platform Team",
+        "email": "platform@example.com"
+      },
+      "keywords": [
+        "code-review",
+        "pull-request",
+        "checklist"
+      ]
+    }
+  ]
+}

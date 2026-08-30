@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schema/v1.0.0/plugin.json",
+  "name": "agent-hub",
+  "description": "The internal marketplace for agent skills — browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
+  "plugins": [
+    {
+      "name": "pr-review-checklist",
+      "source": "./plugins/pr-review-checklist",
+      "description": "Reviews a pull request against the team's checklist for tests, accessibility and rollback safety.",
+      "version": "1.0.0"
+    }
+  ]
+}

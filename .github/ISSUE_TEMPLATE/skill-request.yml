@@ -1,0 +1,64 @@
+name: Request a skill
+description: Ask for a new agent skill in plain language. No technical knowledge needed.
+title: "Skill request: "
+labels: ["skill-request", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the skill you want in your own words. The platform team triages
+        requests; once approved, an agent drafts the skill and opens a pull
+        request with you as reviewer.
+  - type: input
+    id: skill-title
+    attributes:
+      label: Skill title
+      placeholder: PR review checklist
+    validations:
+      required: true
+  - type: dropdown
+    id: roles
+    attributes:
+      label: Roles
+      description: Who is this skill for? Pick every role that applies.
+      multiple: true
+      options:
+        - Developer
+        - QA
+        - Business Analyst
+        - Product Owner
+        - Scrum Master
+        - UX Designer
+        - General
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this skill solve?
+      description: Plain language. What goes wrong today, and what should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: Example scenarios and expected results
+      description: >
+        One "Scenario:" line and one "Expected:" line per example. These become
+        the criteria the generating agent evaluates its own work against, so be
+        concrete.
+      placeholder: |
+        Scenario: A PR adds a new form field
+        Expected: The skill flags the missing label
+
+        Scenario: A PR only touches tests
+        Expected: The skill says no checklist items apply
+    validations:
+      required: true
+  - type: input
+    id: team
+    attributes:
+      label: Your team
+      description: Who will own this skill once it ships?
+    validations:
+      required: true

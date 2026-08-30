@@ -1,0 +1,20 @@
+export type ValidationError = {
+  /** Stable machine-readable rule id, e.g. `portable-subset`. */
+  code: string;
+  message: string;
+  plugin?: string;
+  /** Repo-relative path the error is about. */
+  path?: string;
+};
+
+export type Author = { name: string; email?: string; url?: string };
+
+export type PluginMetadata = {
+  name: string;
+  description: string;
+  version: string;
+  ownerTeam: string;
+  author: Author;
+  roles: string[];
+  keywords: string[];
+};

@@ -1,0 +1,72 @@
+name: Generate requested skill
+
+# The platform team triages requests; applying the approval label is the only
+# trigger, which keeps cost and junk requests under control.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  generate:
+    if: github.event.label.name == 'approved-for-generation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Parse the request
+        id: request
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$ISSUE_BODY" > /tmp/issue.md
+          if ! node packages/cli/bin/agent-hub.js parse-request --file /tmp/issue.md > /tmp/request.json; then
+            gh issue comment "${{ github.event.issue.number }}" --body "$(printf 'This request could not be parsed, so generation did not start:\n\n```json\n%s\n```\n\nPlease edit the issue to fix the fields above, then re-apply the label.' "$(cat /tmp/request.json)")"
+            exit 1
+          fi
+          {
+            echo 'request<<REQUEST_EOF'
+            cat /tmp/request.json
+            echo 'REQUEST_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate the plugin
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are generating one new plugin for this Agent Hub marketplace from an approved request.
+
+            The structured request (already validated) is:
+            ${{ steps.request.outputs.request }}
+
+            Rules:
+            - Read CONTRIBUTING.md and copy the shape of plugins/pr-review-checklist exactly.
+            - Create plugins/<kebab-name>/ with plugin.yaml, README.md and skills/<skill>/SKILL.md.
+              Set roles to the request's roles verbatim, ownerTeam to the request's team, version to 1.0.0.
+            - Portable subset only: no hooks/, commands/ or agents/ directories.
+            - Add a CODEOWNERS line for the new plugin directory.
+            - Run `node packages/cli/bin/agent-hub.js build` and commit the generated manifests.
+            - Self-evaluate: for each scenario in the request, walk the SKILL.md and state whether it
+              produces the expected result. Revise the skill until every scenario passes, then put that
+              evaluation in the PR body under "Self-evaluation".
+            - Never push to main. Open a pull request from a branch named skill/<kebab-name>, titled
+              "Add <name> (requested in #${{ github.event.issue.number }})", with "Closes #${{ github.event.issue.number }}"
+              in the body, and request review from @${{ github.event.issue.user.login }}.
+          claude_args: --allowed-tools "Bash,Read,Write,Edit,Glob,Grep"
+
+      - name: Tell the requester
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${{ github.event.issue.number }}" --body "Generation run finished with status \`${{ job.status }}\`. See the linked pull request, or the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."

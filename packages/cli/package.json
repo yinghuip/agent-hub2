@@ -1,0 +1,16 @@
+{
+  "name": "@agent-hub/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "agent-hub": "./bin/agent-hub.js" },
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "node ./bin/agent-hub.js build"
+  },
+  "dependencies": {
+    "marked": "^14.1.3",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.8"
+  }
+}
