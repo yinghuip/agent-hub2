@@ -35,10 +35,14 @@ One-time settings the pipeline assumes but cannot apply itself:
 ```bash
 gh label create skill-request --description "A request for a new agent skill" --color 0E8A16
 gh label create needs-triage --description "Maintainer needs to evaluate this issue" --color FBCA04
+gh label create possible-duplicate --description "An existing skill or open request may already cover this" --color C5DEF5
 ```
 
-Requests carry both labels. A requester's fine-grained token cannot create a
-missing label, so an unlabelled request would never reach triage.
+Requests carry the first two labels. A requester's fine-grained token cannot
+create a missing label, so an unlabelled request would never reach triage. The
+third is applied by the duplicate check below; create it up front so it has a
+description and a colour, and so triage can filter on it before the first one
+lands.
 
 ## Access control
 
@@ -56,6 +60,33 @@ The platform team triages; applying the approval label (`approvalLabel` in
 against the scenarios you wrote, and opens a pull request with you and the
 platform reviewers (`platformReviewers`) as reviewers.
 
+### Does it already exist?
+
+The best request is the one nobody has to write. The form ranks what you type
+against every published skill as you type it, and against the open request queue
+when you submit, and shows you the closest match with the command that installs
+it. It never blocks: if none of them fit, the button becomes **Request anyway**.
+
+Every request is checked again once it is an issue — including ones filed on
+GitHub directly, and again whenever one is edited. `check-duplicate.yml` shortlists
+by wording, an agent judges whether each candidate really covers the request, and
+the bot leaves one comment saying which skill to install instead, or which open
+request to add your scenarios to. A match also adds `possible-duplicate`; editing
+the request until it no longer matches takes the label off again. Nothing is ever
+closed automatically, and the comment is edited in place rather than repeated.
+
+When an existing skill *nearly* covers a request, the answer is to extend that
+plugin rather than ship a second one that overlaps it — say what is missing on
+the issue, and generation amends the existing plugin instead of creating a new one.
+
+How alike two skills must read before any of this fires is `similarityFloor` in
+`agent-hub.config.json`. Run the same check by hand with:
+
+```bash
+node packages/cli/bin/agent-hub.js find-similar --title "Some skill" --problem "What goes wrong today"
+node packages/cli/bin/agent-hub.js find-similar --all   # published plugins that read like each other
+```
+
 The form posts straight to the GitHub API from the browser, authenticated with
 the requester's own fine-grained personal access token (`Issues: Read and write`
 on this repo). The token goes to `api.github.com` and nowhere else — there is no
@@ -70,6 +101,10 @@ token for an organisation-owned repo needs an org admin to approve it.
 The page builds the issue body with the build's own `renderRequestIssue`,
 emitted into the page verbatim, so what a requester posts is exactly what the
 generation agent's parser reads back.
+
+At triage, `needs-triage` minus `possible-duplicate` is the queue that still
+needs a human decision; the rest already have an answer waiting for the requester
+to accept or reject.
 
 Generated PRs must never merge on the agent's own say-so. Protect `main` with
 "Require a pull request before merging", "Require review from Code Owners" and
