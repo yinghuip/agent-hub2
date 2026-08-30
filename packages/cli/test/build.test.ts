@@ -276,6 +276,58 @@ describe("catalog shell", () => {
   });
 });
 
+describe("accessibility contracts", () => {
+  it("keeps one top-level heading per plugin page by demoting the README", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/plugins/pr-review.html");
+
+    expect(page.match(/<h1/g)).toHaveLength(1);
+    // The README's own "# PR Review" becomes an h2 under the page's heading.
+    expect(page).toContain("<h2>PR Review</h2>");
+    expect(page).not.toContain("<h1>PR Review</h1>");
+  });
+
+  it("wires the install tabs to their panels", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/plugins/pr-review.html");
+
+    expect(page).toContain('aria-controls="panel-claude-code"');
+    expect(page).toContain('id="panel-claude-code"');
+    expect(page).toContain('role="tabpanel"');
+    expect(page).toContain('aria-labelledby="tab-claude-code"');
+    // One tab stop for the strip, so the arrow keys own movement within it.
+    expect(page).toContain('tabindex="-1"');
+    expect(page).toContain("ArrowRight");
+  });
+
+  it("announces catalog filtering and offers a skip link", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const home = await read(root, "dist/site/index.html");
+
+    expect(home).toContain('id="no-results"');
+    expect(home).toContain('role="status"');
+    expect(home).toContain('class="skip"');
+    expect(home).toContain('href="#main"');
+    expect(home).toContain('id="main"');
+    expect(home).toContain('<meta name="description"');
+    expect(home).toContain('rel="icon"');
+  });
+
+  it("ties the request form's help text to its fields", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain('aria-describedby="token-hint"');
+    expect(page).toContain('id="token-hint"');
+    expect(page).toContain('aria-describedby="scenarios-hint"');
+    expect(page).toContain('id="scenarios-hint"');
+  });
+});
+
 describe("request page", () => {
   it("creates the issue through the GitHub API under the requester's own token", async () => {
     const root = await writeTree(validTree());

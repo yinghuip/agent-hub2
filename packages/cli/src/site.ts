@@ -13,6 +13,17 @@ const formatDate = (iso: string) => iso.slice(0, 10);
 /** JSON safe to embed in a <script> element. */
 const embedJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 
+/** A functional mark, not decoration: without it every page load 404s. */
+function favicon(config: HubConfig): string {
+  const initial = escape(config.displayName.trim().charAt(0).toUpperCase());
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+    `<rect width="32" height="32" fill="%23e42300"/>` +
+    `<text x="16" y="23" font-family="Helvetica,Arial,sans-serif" font-size="20" font-weight="700" ` +
+    `text-anchor="middle" fill="%23ffffff">${initial}</text></svg>`;
+  return `data:image/svg+xml,${svg.replace(/#/g, "%23").replace(/"/g, "'")}`;
+}
+
 function layout(config: HubConfig, title: string, body: string, depth: number): string {
   const base = depth === 0 ? "." : "..";
   return `<!doctype html>
@@ -21,10 +32,13 @@ function layout(config: HubConfig, title: string, body: string, depth: number): 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
+<meta name="description" content="${escape(config.description)}">
+<link rel="icon" href="${favicon(config)}">
 <link rel="preload" as="font" type="font/woff2" href="${base}/fonts/archivo-narrow.woff2" crossorigin>
 <link rel="stylesheet" href="${base}/styles.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="site">
   <a class="brand" href="${base}/index.html">${escape(config.displayName)}</a>
   <nav class="utility">
@@ -32,7 +46,7 @@ function layout(config: HubConfig, title: string, body: string, depth: number): 
     <a href="https://github.com/${escape(config.repo)}">Repository</a>
   </nav>
 </header>
-<main>
+<main id="main">
 ${body}
 </main>
 <footer class="invert">
@@ -54,9 +68,8 @@ function tile(plugin: CatalogPlugin, index: number): string {
   const search = [plugin.name, plugin.description, plugin.ownerTeam, ...plugin.keywords, ...plugin.roles]
     .join(" ")
     .toLowerCase();
-  return `<article class="tile${index === 0 ? " tile-wide" : ""}" data-roles="${escape(
-    plugin.roles.join("|"),
-  )}" data-search="${escape(search)}">
+  return `<article class="tile${index === 0 ? " tile-wide" : ""}" data-name="${escape(plugin.name)}"
+  data-roles="${escape(plugin.roles.join("|"))}" data-search="${escape(search)}">
   <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
   <p class="desc">${escape(plugin.description)}</p>
   <dl class="strip">
@@ -137,7 +150,8 @@ ${
 <section class="catalog">
   ${rail(populatedRoles)}
   <div class="catalog-body">
-    <p id="no-results" hidden>No skills match that search.</p>
+    <p id="result-count" class="visually-hidden" role="status" aria-live="polite"></p>
+    <p id="no-results" role="status" hidden>No skills match that search.</p>
     ${roleSections}
   </div>
 </section>
@@ -179,19 +193,23 @@ ${
   var sections = Array.prototype.slice.call(document.querySelectorAll("section.role, section.recent"));
   var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-role-filter]"));
   var empty = document.getElementById("no-results");
+  var count = document.getElementById("result-count");
   var role = "";
 
   function apply() {
     var terms = input.value.toLowerCase().split(/\\s+/).filter(Boolean);
     var visible = 0;
+    // A skill appears under each of its roles, so count names, not tiles.
+    var names = {};
     tiles.forEach(function (tile) {
       var haystack = tile.getAttribute("data-search");
       var roles = tile.getAttribute("data-roles").split("|");
       var match = terms.every(function (term) { return haystack.indexOf(term) !== -1; }) &&
         (role === "" || roles.indexOf(role) !== -1);
       tile.hidden = !match;
-      if (match) visible++;
+      if (match) names[tile.getAttribute("data-name")] = true;
     });
+    visible = Object.keys(names).length;
     sections.forEach(function (section) {
       // A role section belongs to one role; picking a role puts the others away.
       var sectionRole = section.getAttribute("data-role");
@@ -199,6 +217,9 @@ ${
       section.hidden = wrongRole || section.querySelectorAll(".tile:not([hidden])").length === 0;
     });
     empty.hidden = visible !== 0;
+    // Filtering is a silent change on screen, so say what happened.
+    count.textContent = visible + (visible === 1 ? " skill" : " skills") +
+      (role === "" ? "" : " for " + role) + " shown";
   }
 
   function setRole(next) {
@@ -242,6 +263,8 @@ const INSTALL_TABS: { label: string; key: keyof CatalogPlugin["install"] }[] = [
   { label: "Universal", key: "universal" },
 ];
 
+const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
 function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
   const body = `<article class="detail">
   <header class="detail-head">
@@ -260,17 +283,23 @@ function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
 
   <section class="install">
     <h2>Install</h2>
-    <div class="tabs" role="tablist">
+    <div class="tabs" role="tablist" aria-label="Install commands by tool">
       ${INSTALL_TABS.map(
         (tab, index) =>
-          `<button role="tab" data-tab="${escape(tab.label)}" class="tab${index === 0 ? " active" : ""}"
-        aria-selected="${index === 0 ? "true" : "false"}">${escape(tab.label)}</button>`,
+          `<button role="tab" id="tab-${slug(tab.label)}" data-tab="${escape(tab.label)}"
+        aria-controls="panel-${slug(tab.label)}" aria-selected="${index === 0 ? "true" : "false"}"
+        tabindex="${index === 0 ? "0" : "-1"}" class="tab${index === 0 ? " active" : ""}">${escape(tab.label)}</button>`,
       ).join("\n      ")}
     </div>
     ${INSTALL_TABS.map(
-      (tab, index) => `<div class="panel${index === 0 ? " active" : ""}" data-panel="${escape(tab.label)}">
+      (tab, index) => `<div class="panel${index === 0 ? " active" : ""}" role="tabpanel"
+      id="panel-${slug(tab.label)}" aria-labelledby="tab-${slug(tab.label)}" data-panel="${escape(tab.label)}"
+      tabindex="0">
+      <div class="panel-bar">
+        <span class="panel-tool">${escape(tab.label)}</span>
+        <button class="copy" type="button" aria-live="polite">Copy</button>
+      </div>
       <pre><code>${escape(plugin.install[tab.key])}</code></pre>
-      <button class="copy" type="button">Copy</button>
     </div>`,
     ).join("\n    ")}
   </section>
@@ -285,19 +314,35 @@ function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
 (function () {
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
   var panels = Array.prototype.slice.call(document.querySelectorAll(".panel"));
-  tabs.forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      var name = tab.getAttribute("data-tab");
-      tabs.forEach(function (other) {
-        var on = other === tab;
-        other.classList.toggle("active", on);
-        other.setAttribute("aria-selected", on ? "true" : "false");
-      });
-      panels.forEach(function (panel) {
-        panel.classList.toggle("active", panel.getAttribute("data-panel") === name);
-      });
+
+  function select(tab, moveFocus) {
+    tabs.forEach(function (other) {
+      var on = other === tab;
+      other.classList.toggle("active", on);
+      other.setAttribute("aria-selected", on ? "true" : "false");
+      other.setAttribute("tabindex", on ? "0" : "-1");
+    });
+    panels.forEach(function (panel) {
+      panel.classList.toggle("active", panel.id === tab.getAttribute("aria-controls"));
+    });
+    if (moveFocus) tab.focus();
+  }
+
+  tabs.forEach(function (tab, index) {
+    tab.addEventListener("click", function () { select(tab, false); });
+    // The tab strip is one tab stop; the arrows move within it.
+    tab.addEventListener("keydown", function (event) {
+      var next = null;
+      if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+      if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+      if (event.key === "Home") next = tabs[0];
+      if (event.key === "End") next = tabs[tabs.length - 1];
+      if (!next) return;
+      event.preventDefault();
+      select(next, true);
     });
   });
+
   panels.forEach(function (panel) {
     var button = panel.querySelector(".copy");
     button.addEventListener("click", function () {
@@ -306,7 +351,7 @@ function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
         button.textContent = "Copied";
         setTimeout(function () { button.textContent = "Copy"; }, 1600);
       }, function () {
-        button.textContent = "Press Ctrl-C";
+        button.textContent = "Select and copy";
       });
     });
   });
@@ -324,7 +369,7 @@ function requestPage(config: HubConfig): string {
 <form id="request">
   <label>Skill title<input name="title" required placeholder="PR review checklist"></label>
 
-  <fieldset><legend>Which roles is this for?</legend>
+  <fieldset aria-required="true"><legend>Which roles is this for?</legend>
     ${ROLES.map(
       (role) => `<label class="check"><input type="checkbox" name="roles" value="${escape(role)}"> ${escape(role)}</label>`,
     ).join("\n    ")}
@@ -334,15 +379,16 @@ function requestPage(config: HubConfig): string {
     <textarea name="problem" required rows="4" placeholder="What goes wrong today, and what should happen instead?"></textarea></label>
 
   <label>Example scenarios and expected results
-    <textarea name="scenarios" required rows="6" placeholder="Scenario: A PR adds a new form field&#10;Expected: The skill flags the missing label&#10;&#10;Scenario: A PR only touches tests&#10;Expected: The skill says no checklist items apply"></textarea></label>
-  <p class="hint">One <code>Scenario:</code> line and one <code>Expected:</code> line per example. These become the
+    <textarea name="scenarios" required rows="6" aria-describedby="scenarios-hint" placeholder="Scenario: A PR adds a new form field&#10;Expected: The skill flags the missing label&#10;&#10;Scenario: A PR only touches tests&#10;Expected: The skill says no checklist items apply"></textarea></label>
+  <p class="hint" id="scenarios-hint">One <code>Scenario:</code> line and one <code>Expected:</code> line per example. These become the
   criteria the generating agent checks its own work against, so be concrete.</p>
 
   <label>Your team<input name="team" required placeholder="Web"></label>
 
   <label>Your GitHub token
-    <input name="token" type="password" required autocomplete="off" placeholder="github_pat_…"></label>
-  <p class="hint">A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained
+    <input name="token" type="password" required autocomplete="off" aria-describedby="token-hint"
+      placeholder="github_pat_…"></label>
+  <p class="hint" id="token-hint">A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained
   personal access token</a> scoped to <code>${escape(config.repo)}</code> with <strong>Issues: Read and write</strong>.
   It goes straight from your browser to GitHub. This page has no server, and never stores your token.</p>
 
@@ -646,6 +692,7 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 footer.invert { padding-block: 3rem; font-size: .875rem; }
 footer .well { display: grid; gap: .35rem; }
 footer p { margin: 0; color: var(--invert-muted); }
+footer a { display: inline-block; padding: .25rem 0; }
 .foot-brand { font-family: var(--display); text-transform: uppercase; font-weight: 700; color: var(--invert-fg); font-size: 1.1rem; }
 footer a { color: var(--invert-fg); }
 
@@ -675,13 +722,16 @@ footer a { color: var(--invert-fg); }
 .facts > div { display: grid; gap: .35rem; padding: 1rem 1.25rem 1rem 0; border-bottom: 1px solid var(--line); }
 .facts dt { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); }
 .facts dd { margin: 0; font-size: .9375rem; }
-.tabs { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); border: 1px solid var(--line); border-bottom: 0; }
-.tab { flex: 1 1 auto; padding: .75rem 1rem; background: var(--bg); color: var(--muted); border: 0; border-top: 3px solid transparent; border-radius: 0; font-size: .75rem; letter-spacing: .1em; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tabs { display: flex; gap: 1px; overflow-x: auto; scrollbar-width: thin; background: var(--line); border: 1px solid var(--line); border-bottom: 0; }
+.tab { flex: 1 0 auto; scroll-snap-align: start; padding: .75rem 1rem; background: var(--bg); color: var(--muted); border: 0; border-top: 3px solid transparent; border-radius: 0; font-size: .75rem; letter-spacing: .1em; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .tab.active { color: var(--fg); border-top-color: var(--accent); }
-.panel { display: none; position: relative; border: 1px solid var(--line); padding: 1.25rem; background: var(--surface); }
+.panel { display: none; border: 1px solid var(--line); padding: 1.25rem; background: var(--surface); }
 .panel.active { display: block; }
 .panel pre { margin: 0; overflow-x: auto; font-size: .875rem; }
-.copy { position: absolute; top: .75rem; right: .75rem; padding: .35rem .75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+/* The command is the point of the page: nothing overlaps it. */
+.panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }
+.panel-tool { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.copy { padding: .35rem .75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
 .prose { max-width: 68ch; }
 .prose h1, .prose h2, .prose h3 { margin: 2rem 0 .75rem; }
 .prose h1 { font-size: 1.75rem; }
@@ -725,6 +775,10 @@ button[disabled] { opacity: .6; cursor: progress; }
 #status.error { color: var(--accent-fg); }
 #no-results { color: var(--muted); }
 .icon { display: block; }
+.skip { position: absolute; left: -9999px; top: 0; z-index: 10; padding: .75rem 1rem; background: var(--accent); color: var(--on-accent); font: 700 .8125rem var(--display); text-transform: uppercase; letter-spacing: .1em; }
+.skip:focus { left: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+::placeholder { color: var(--muted); opacity: 1; }
 
 /* Motion: entry and reveal only, and only when it is welcome. */
 .reveal { opacity: 0; transform: translateY(8px); transition: opacity 400ms cubic-bezier(0.16, 1, 0.3, 1), transform 400ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms; }

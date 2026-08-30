@@ -52,7 +52,7 @@ export async function analyse({ root, now = new Date() }: AnalyseOptions): Promi
         name: skill.name,
         description: String(parseFrontmatter(skill.text).data?.description ?? ""),
       })),
-      readmeHtml: marked.parse(plugin.readmeText ?? "", { async: false }),
+      readmeHtml: demoteHeadings(marked.parse(plugin.readmeText ?? "", { async: false })),
       lastUpdated: lastUpdated.toISOString(),
       addedAt: addedAt.toISOString(),
       stale: ageInDays(lastUpdated, now) > config.staleAfterDays,
@@ -70,6 +70,15 @@ export async function analyse({ root, now = new Date() }: AnalyseOptions): Promi
     : [];
 
   return { config, plugins, recentlyAdded, errors, now };
+}
+
+/**
+ * A README owns its own heading tree, but on a plugin page it sits under the
+ * plugin's h1. Shift every heading down one level so the page keeps a single
+ * top-level heading and a readable outline.
+ */
+function demoteHeadings(html: string): string {
+  return html.replace(/<(\/?)h([1-5])\b/g, (_match, slash: string, level: string) => `<${slash}h${Number(level) + 1}`);
 }
 
 function ageInDays(date: Date, now: Date): number {
