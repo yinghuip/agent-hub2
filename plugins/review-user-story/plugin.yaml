@@ -1,0 +1,15 @@
+name: review-user-story
+description: Reviews a user story's description and acceptance criteria against the INVEST framework and judges whether it meets the Definition of Ready.
+version: 1.0.0
+ownerTeam: platform
+author:
+  name: Platform Team
+  email: platform@example.com
+roles:
+  - Business Analyst
+  - Product Owner
+keywords:
+  - user-story
+  - invest
+  - definition-of-ready
+  - backlog

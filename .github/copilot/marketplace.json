@@ -7,6 +7,12 @@
       "source": "./plugins/pr-review-checklist",
       "description": "Reviews a pull request against the team's checklist for tests, accessibility and rollback safety.",
       "version": "1.0.0"
+    },
+    {
+      "name": "review-user-story",
+      "source": "./plugins/review-user-story",
+      "description": "Reviews a user story's description and acceptance criteria against the INVEST framework and judges whether it meets the Definition of Ready.",
+      "version": "1.0.0"
     }
   ]
 }

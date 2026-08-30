@@ -1,0 +1,17 @@
+{
+  "skill_name": "review-user-story",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Can you review this user story for me? It's Azure DevOps work item 12431 (https://dev.azure.com/fabrikam/Billing/_workitems/edit/12431). I can't give you a token, so here's what's in it:\n\nTitle: Rebuild the billing engine\nDescription: As a finance user, I want the billing engine rebuilt so that reports run faster.\nAcceptance criteria: (none written)",
+      "expected_output": "The story's INVEST average score falls below 4, so it is flagged as not meeting the Definition of Ready.",
+      "files": [],
+      "expectations": [
+        "Outputs a matrix table with a numeric score for each of the six INVEST criteria — Independent, Negotiable, Valuable, Estimable, Small, Testable.",
+        "States the average INVEST score as a number.",
+        "States that the story does not meet the Definition of Ready.",
+        "Names at least one specific shortfall to fix, such as missing acceptance criteria, unclear value, or oversized scope."
+      ]
+    }
+  ]
+}
