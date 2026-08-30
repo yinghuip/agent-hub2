@@ -582,7 +582,30 @@ describe("request page", () => {
     expect(page).toContain("/plugin install pr-review@agent-hub");
     expect(page).toContain("var FLOOR = 0.3");
     // Advisory only: the request still goes through.
-    expect(page).toContain("Continue anyway");
+    expect(page).toContain("Send to GitHub anyway");
+  });
+
+  it("tells the requester one confirmation click remains on GitHub", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain("Review &amp; submit on GitHub");
+    expect(page).toContain("Submit new issue");
+    expect(page).toContain("Almost done");
+  });
+
+  it("falls back to a plain link when the popup is blocked", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    // window.open returns null under a popup blocker; the page must not claim
+    // success, and a user-clicked link is never blocked.
+    expect(page).toContain('window.open(url, "_blank", "noopener")');
+    expect(page).toContain("This browser blocked the tab.");
+    expect(page).toContain("Open your request on GitHub");
+    expect(page).toContain("Re-open your prefilled request");
   });
 
   // The ranker on this page still sees published skills only, so it must not
@@ -611,6 +634,8 @@ describe("request page", () => {
     // what to do rather than throwing.
     expect(page).toContain("navigator.clipboard.writeText");
     expect(page).toContain("catch (error)");
+    // The requester may not paste right away; offer the clipboard again.
+    expect(page).toContain("Copy scenarios again");
   });
 
   it("collects examples as structured pairs and composes the Scenario:/Expected: text itself", async () => {
