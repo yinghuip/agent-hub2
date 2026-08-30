@@ -1132,6 +1132,9 @@ form input, form textarea, form select {
    above the group, never notched into a border. */
 fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 legend { float: left; width: 100%; padding: 0; margin: 1.5rem 0 .35rem; }
+/* The floated legend moves line boxes, not border boxes: without the clear,
+   the group's border climbs up behind the label and swallows it. */
+legend + * { clear: both; }
 .checks { border: 1px solid var(--line-ui); background: var(--surface); padding: 1rem 1.25rem .5rem; }
 
 /* Examples: structured pairs, so the Scenario:/Expected: convention is the
