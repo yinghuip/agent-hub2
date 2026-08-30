@@ -26,8 +26,13 @@ function favicon(config: HubConfig): string {
   return `data:image/svg+xml,${svg.replace(/#/g, "%23").replace(/"/g, "'")}`;
 }
 
-function layout(config: HubConfig, title: string, body: string, depth: number): string {
+/** Pages the utility nav can mark as current. */
+type NavPage = "contribute" | "request" | "requests" | null;
+
+function layout(config: HubConfig, title: string, body: string, depth: number, current: NavPage = null): string {
   const base = depth === 0 ? "." : "..";
+  const item = (page: Exclude<NavPage, null>, href: string, label: string) =>
+    `<a href="${href}"${current === page ? ' aria-current="page"' : ""}>${label}</a>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -44,9 +49,10 @@ function layout(config: HubConfig, title: string, body: string, depth: number): 
 <header class="site">
   <a class="brand" href="${base}/index.html">${escape(config.displayName)}</a>
   <nav class="utility">
-    <a href="${base}/contribute.html">Contribute</a>
-    <a href="${base}/request.html">Request a skill</a>
-    <a href="https://github.com/${escape(config.repo)}">Repository</a>
+    ${item("contribute", `${base}/contribute.html`, "Contribute")}
+    ${item("request", `${base}/request.html`, "Request a skill")}
+    ${item("requests", `${base}/requests.html`, "Requests")}
+    <a href="https://github.com/${escape(config.repo)}">Repository<span class="ext" aria-hidden="true"> ↗</span></a>
   </nav>
 </header>
 <main id="main">
@@ -74,6 +80,7 @@ function tile(plugin: CatalogPlugin, index: number): string {
   return `<article class="tile${index === 0 ? " tile-wide" : ""}" data-name="${escape(plugin.name)}"
   data-roles="${escape(plugin.roles.join("|"))}" data-search="${escape(search)}">
   <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
+  <p class="tile-roles">${escape(plugin.roles.join(" · "))}</p>
   <p class="desc">${escape(plugin.description)}</p>
   <dl class="strip">
     <div><dt>Version</dt><dd><code>${escape(plugin.version)}</code></dd></div>
@@ -110,15 +117,9 @@ function homePage(analysis: Analysis, config: HubConfig): string {
   const recent = recentlyAdded
     .map((name) => plugins.find((plugin) => plugin.name === name))
     .filter((plugin): plugin is CatalogPlugin => Boolean(plugin));
-  const roleSections = populatedRoles
-    .map((role) => {
-      const inRole = plugins.filter((plugin) => plugin.roles.includes(role));
-      return `<section class="role" data-role="${escape(role)}">
-  <h2>${escape(role)}</h2>
-  <div class="grid">${inRole.map((plugin, index) => tile(plugin, index)).join("\n")}</div>
-</section>`;
-    })
-    .join("\n");
+  // One tile per plugin, whatever its role count: roles are chips on the tile
+  // and a filter over the sheet, never a reason to print the same card twice.
+  const catalogGrid = `<div class="grid">${plugins.map((plugin, index) => tile(plugin, index)).join("\n")}</div>`;
 
   const body = `<section class="hero">
   <div class="hero-copy">
@@ -129,19 +130,21 @@ function homePage(analysis: Analysis, config: HubConfig): string {
       aria-label="Search skills">
   </div>
   <aside class="hero-counts">
-    <div><span class="count">${plugins.length}</span><span class="count-label">Skills</span></div>
-    <div><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></div>
+    <a href="#catalog"><span class="count">${plugins.length}</span><span class="count-label">Skills</span></a>
+    <a href="#catalog"><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></a>
     ${
       // Absent when the queue was not read: a missing number is honest, a 0 is a lie.
       requests
-        ? `<div><span class="count">${requests.length}</span><span class="count-label">Open requests</span></div>`
+        ? `<a href="./requests.html"><span class="count">${requests.length}</span><span class="count-label">Open requests</span></a>`
         : ""
     }
   </aside>
 </section>
 
 ${
-  recent.length
+  // Below three entries the reel repeats the catalog card for card, which is
+  // repetition, not recency. It earns its place only once it summarises.
+  recent.length >= 3
     ? `<section class="recent">
   <h2>Recently added</h2>
   <div class="reel">${recent.map((plugin, index) => tile(plugin, index + 1)).join("\n")}</div>
@@ -149,20 +152,24 @@ ${
     : ""
 }
 
-<section class="catalog">
+<section class="catalog" id="catalog">
   ${rail(populatedRoles)}
   <div class="catalog-body">
+    <h2>Catalog</h2>
     <p id="result-count" class="visually-hidden" role="status" aria-live="polite"></p>
     <p id="no-results" role="status" hidden>No skills match that search.</p>
-    ${roleSections}
+    ${catalogGrid}
   </div>
 </section>
 
 <section class="band invert">
   <div class="well">
     <h2>Install the marketplace once</h2>
-    <pre><code>/plugin marketplace add ${escape(config.repo)}
+    <div class="band-code">
+      <pre><code>/plugin marketplace add ${escape(config.repo)}
 /plugin install &lt;skill&gt;@${escape(config.name)}</code></pre>
+      <button class="copy" type="button" aria-live="polite">Copy</button>
+    </div>
     <p>Then install any skill by name. Copilot CLI reads the same commands, and every listing carries a
     universal script for tools that do not.</p>
   </div>
@@ -215,7 +222,7 @@ ${
   var input = document.getElementById("search");
   var select = document.getElementById("role-select");
   var tiles = Array.prototype.slice.call(document.querySelectorAll(".tile"));
-  var sections = Array.prototype.slice.call(document.querySelectorAll("section.role, section.recent"));
+  var sections = Array.prototype.slice.call(document.querySelectorAll("section.recent"));
   var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-role-filter]"));
   var empty = document.getElementById("no-results");
   var count = document.getElementById("result-count");
@@ -224,7 +231,7 @@ ${
   function apply() {
     var terms = input.value.toLowerCase().split(/\\s+/).filter(Boolean);
     var visible = 0;
-    // A skill appears under each of its roles, so count names, not tiles.
+    // The reel repeats catalog tiles, so count names, not tiles.
     var names = {};
     tiles.forEach(function (tile) {
       var haystack = tile.getAttribute("data-search");
@@ -236,10 +243,7 @@ ${
     });
     visible = Object.keys(names).length;
     sections.forEach(function (section) {
-      // A role section belongs to one role; picking a role puts the others away.
-      var sectionRole = section.getAttribute("data-role");
-      var wrongRole = role !== "" && sectionRole !== null && sectionRole !== role;
-      section.hidden = wrongRole || section.querySelectorAll(".tile:not([hidden])").length === 0;
+      section.hidden = section.querySelectorAll(".tile:not([hidden])").length === 0;
     });
     empty.hidden = visible !== 0;
     // Filtering is a silent change on screen, so say what happened.
@@ -262,6 +266,20 @@ ${
   select.addEventListener("change", function () { setRole(select.value); });
   buttons.forEach(function (button) {
     button.addEventListener("click", function () { setRole(button.getAttribute("data-role-filter")); });
+  });
+
+  // The same commands the plugin pages carry, so the same copy affordance.
+  Array.prototype.slice.call(document.querySelectorAll(".band-code")).forEach(function (block) {
+    var button = block.querySelector(".copy");
+    button.addEventListener("click", function () {
+      var text = block.querySelector("code").textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        button.textContent = "Copied";
+        setTimeout(function () { button.textContent = "Copy"; }, 1600);
+      }, function () {
+        button.textContent = "Select and copy";
+      });
+    });
   });
 
   // Tiles arrive as you reach them. No scroll listener, and nothing moves under reduced motion.
@@ -321,7 +339,6 @@ function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
       id="panel-${slug(tab.label)}" aria-labelledby="tab-${slug(tab.label)}" data-panel="${escape(tab.label)}"
       tabindex="0">
       <div class="panel-bar">
-        <span class="panel-tool">${escape(tab.label)}</span>
         <button class="copy" type="button" aria-live="polite">Copy</button>
       </div>
       <pre><code>${escape(plugin.install[tab.key])}</code></pre>
@@ -408,7 +425,7 @@ function contributePage(config: HubConfig, contributingHtml: string | null): str
   here. <a href="${repo}">Browse the repository</a>.</p>`
   }
 </article>`;
-  return layout(config, `Contribute a skill - ${config.displayName}`, body, 0);
+  return layout(config, `Contribute a skill - ${config.displayName}`, body, 0, "contribute");
 }
 
 /** Display order: the stage waiting on a human first. */
@@ -519,7 +536,7 @@ ${sections}`;
   a request is opened, edited, labelled or closed. For the live list, see ${live}.</p>`
   }
 </article>`;
-  return layout(config, `Open requests - ${config.displayName}`, body, 0);
+  return layout(config, `Open requests - ${config.displayName}`, body, 0, "requests");
 }
 
 function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number): string {
@@ -730,7 +747,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 })();
 </script>`;
   return layout(config, `Request a skill - ${config.displayName}`, `${body}
-</article>`, 0);
+</article>`, 0, "request");
 }
 
 const STYLES = `@font-face {
@@ -766,6 +783,7 @@ const STYLES = `@font-face {
   --muted: #5a5a5a;
   --accent: #e42300;
   --accent-fg: #c11d00;
+  --accent-down: #c11d00; /* hover/pressed fill, same in both modes */
   --on-accent: #ffffff;
   --invert-bg: #141416;
   --invert-fg: #f2f2f3;
@@ -812,7 +830,8 @@ h1, h2, h3, .eyebrow, .count, .brand, .rail-item span, .tab, .cta, .count-label 
 }
 h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.05; margin: 0; }
 h1 { font-size: clamp(2.75rem, 1.6rem + 4.4vw, 5rem); }
-h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem); }
+/* A clear step below the h1: section heads structure the page, they do not compete with its title. */
+h2 { font-size: clamp(1.5rem, 1.15rem + 1.3vw, 2.125rem); }
 h3 { font-size: 1.25rem; }
 .eyebrow {
   font-size: .75rem;
@@ -835,7 +854,8 @@ header.site {
 .brand { font-family: var(--display); font-weight: 700; font-size: 1.35rem; letter-spacing: .02em; text-decoration: none; color: var(--fg); }
 .utility { display: flex; gap: 1.5rem; font-size: .875rem; }
 .utility a { color: var(--fg); text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 2px; }
-.utility a:hover { border-bottom-color: var(--accent); }
+.utility a:hover, .utility a[aria-current="page"] { border-bottom-color: var(--accent); }
+.ext { color: var(--muted); }
 
 main { display: block; }
 section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); max-width: var(--well); margin: 0 auto; }
@@ -853,15 +873,17 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
   border: 1px solid var(--line-ui);
   border-radius: 0;
 }
+/* The counts are doors, not ornaments: each one goes where its number lives. */
 .hero-counts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
-.hero-counts div { background: var(--accent); color: var(--on-accent); padding: 1.25rem 1.5rem; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.hero-counts a { background: var(--accent); color: var(--on-accent); text-decoration: none; padding: 1.25rem 1.5rem; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; transition: background-color 180ms; }
+.hero-counts a:hover { background: var(--accent-down); }
 .count { font-size: 2.5rem; font-weight: 700; line-height: 1; }
 .count-label { font-size: .75rem; letter-spacing: .14em; }
 
 /* Recently added: a reel, so it is not a second grid. */
 .reel { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(19rem, 22rem); justify-content: start; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
 .reel .tile { scroll-snap-align: start; }
-.recent h2, .role h2, .queue h2, .stage h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
+.recent h2, .catalog-body h2, .queue h2, .stage h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
 
 /* Catalog: rail plus one ruled sheet of tiles. */
 .catalog { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); gap: clamp(1.5rem, 3vw, 3rem); align-items: start; }
@@ -886,7 +908,6 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .rail-item.active { color: var(--invert-fg); border-left-color: var(--accent); }
 .rail-select { display: none; }
 .catalog-body { min-width: 0; }
-.role { padding: 0 0 clamp(2rem, 4vw, 3rem); max-width: none; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1px; }
 
 /* Tiles read as one ruled sheet: gap is the rule, the background is the ink. */
@@ -895,6 +916,7 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .tile h3 a { color: var(--fg); text-decoration: none; }
 .tile h3 a::after { content: ""; position: absolute; inset: 0; }
 .tile:hover h3 a { color: var(--accent-fg); }
+.tile-roles { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); margin: .35rem 0 0; }
 .desc { color: var(--muted); font-size: .9375rem; margin: .5rem 0 1.25rem; }
 @media (min-width: 1024px) { .tile-wide { grid-column: span 2; } }
 
@@ -916,7 +938,8 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .request-meta { font-size: .8125rem; color: var(--muted); margin: .5rem 0 0; }
 .request-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .chip { margin-left: 0; white-space: nowrap; }
-.stage-count { font-size: .45em; color: var(--muted); letter-spacing: .06em; }
+/* A count badge, not a subscript: it sits beside the heading at chip scale. */
+.stage-count { display: inline-block; vertical-align: middle; font-size: .4em; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line-ui); padding: .15em .6em; }
 .stage { padding: 0 0 clamp(1.5rem, 3vw, 2.5rem); max-width: none; }
 .stage .hint { margin: -1rem 0 0; }
 .queue .cta { margin-top: 1.5rem; }
@@ -924,6 +947,8 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 /* Inverted bands: the page's two moments of scale. */
 .invert { background: var(--invert-bg); color: var(--invert-fg); max-width: none; }
 .band pre { background: transparent; border: 0; padding: 0; margin: 1.5rem 0; font-size: clamp(1rem, .8rem + .6vw, 1.25rem); overflow-x: auto; }
+.band-code { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.band .copy { background: transparent; color: var(--invert-fg); border-color: var(--invert-line); margin-top: 1.5rem; }
 .band h2 { color: var(--invert-fg); }
 .band p { color: var(--invert-muted); max-width: 60ch; }
 footer.invert { padding-block: 3rem; font-size: .875rem; }
@@ -935,8 +960,10 @@ footer a { color: var(--invert-fg); }
 
 /* Two paths: a 60/40 split, not three equal cards. */
 .paths-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
-.path { background: var(--bg); padding: clamp(1.5rem, 3vw, 2.5rem); }
-.path p { color: var(--muted); max-width: 52ch; }
+/* CTAs sit on one line across the split, however long each path's copy runs. */
+.path { background: var(--bg); padding: clamp(1.5rem, 3vw, 2.5rem); display: flex; flex-direction: column; align-items: flex-start; }
+.path p { color: var(--muted); max-width: 52ch; margin-bottom: 1.5rem; }
+.path .cta { margin-top: auto; }
 .cta {
   display: inline-block;
   margin-top: 1.5rem;
@@ -967,8 +994,7 @@ footer a { color: var(--invert-fg); }
 .panel.active { display: block; }
 .panel pre { margin: 0; overflow-x: auto; font-size: .875rem; }
 /* The command is the point of the page: nothing overlaps it. */
-.panel-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }
-.panel-tool { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.panel-bar { display: flex; justify-content: flex-end; margin-bottom: .85rem; }
 .copy { padding: .35rem .75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
 .prose { max-width: 68ch; }
 .prose h1, .prose h2, .prose h3 { margin: 2rem 0 .75rem; }
@@ -993,7 +1019,8 @@ form input, form textarea, form select {
 fieldset { margin-top: 1.5rem; padding: 1rem 1.25rem 1.25rem; border: 1px solid var(--line); }
 legend { font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
 label.check { display: inline-flex; align-items: center; gap: .4rem; margin: 0 1.25rem .5rem 0; font-family: var(--body); text-transform: none; letter-spacing: 0; font-size: .9375rem; }
-label.check input { width: auto; }
+/* Native checks are too small a target beside 1rem inputs; scale and tint them. */
+label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); }
 button[type="submit"] {
   margin-top: 2rem;
   padding: .9rem 1.75rem;
@@ -1037,7 +1064,7 @@ button[disabled] { opacity: .6; cursor: progress; }
 }
 @media (max-width: 767px) {
   .hero, .paths-grid { grid-template-columns: minmax(0, 1fr); }
-  .hero-counts div { padding: 1rem 1.25rem; }
+  .hero-counts a { padding: 1rem 1.25rem; }
   .grid { grid-template-columns: minmax(0, 1fr); }
   header.site { height: auto; padding-block: .75rem; flex-wrap: wrap; }
   .strip { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
