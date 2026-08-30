@@ -28,6 +28,18 @@ Any tool, via the universal fallback:
 curl -fsSL https://raw.githubusercontent.com/yinghuip/agent-hub2/main/scripts/install.sh | bash -s -- pr-review-checklist
 ```
 
+## Repo setup
+
+One-time settings the pipeline assumes but cannot apply itself:
+
+```bash
+gh label create skill-request --description "A request for a new agent skill" --color 0E8A16
+gh label create needs-triage --description "Maintainer needs to evaluate this issue" --color FBCA04
+```
+
+Requests carry both labels. A requester's fine-grained token cannot create a
+missing label, so an unlabelled request would never reach triage.
+
 ## Access control
 
 The catalog is a GitHub Pages site. Set **Settings → Pages → Visibility** to
@@ -44,9 +56,20 @@ The platform team triages; applying the approval label (`approvalLabel` in
 against the scenarios you wrote, and opens a pull request with you and the
 platform reviewers (`platformReviewers`) as reviewers.
 
-The form submits by opening GitHub's own prefilled issue form in a new tab
-rather than POSTing to the API. Same outcome — the issue is created under the
-requester's identity — with no OAuth app to register and no token in the page.
+The form posts straight to the GitHub API from the browser, authenticated with
+the requester's own fine-grained personal access token (`Issues: Read and write`
+on this repo). The token goes to `api.github.com` and nowhere else — there is no
+server to send it to, and the page never stores it. 401 / 403 / 404 responses are
+explained in place, and GitHub's own issue form stays on the page as a fallback,
+carrying over whatever has been typed.
+
+A fine-grained PAT is the only no-backend option: completing an OAuth or device
+flow needs a token exchange that GitHub does not expose to browsers. Note that a
+token for an organisation-owned repo needs an org admin to approve it.
+
+The page builds the issue body with the build's own `renderRequestIssue`,
+emitted into the page verbatim, so what a requester posts is exactly what the
+generation agent's parser reads back.
 
 Generated PRs must never merge on the agent's own say-so. Protect `main` with
 "Require a pull request before merging", "Require review from Code Owners" and

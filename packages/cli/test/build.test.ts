@@ -1,7 +1,7 @@
 import { readdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { build } from "../src/index.ts";
+import { build, renderRequestIssue } from "../src/index.ts";
 import { CONFIG, codeownersFor, pluginYaml, read, readJson, validTree, writeTree } from "./helpers.ts";
 
 const NOW = new Date("2025-06-01T00:00:00Z");
@@ -206,5 +206,39 @@ describe("build", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain("schema");
     await expect(readJson(root, "plugins/pr-review/plugin.json")).rejects.toThrow();
+  });
+});
+
+describe("request page", () => {
+  it("creates the issue through the GitHub API under the requester's own token", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain('"https://api.github.com/repos/" + REPO + "/issues"');
+    expect(page).toContain('REPO = "acme/agent-hub"');
+    expect(page).toContain("Authorization");
+    expect(page).toContain('"skill-request"');
+    // The page embeds the build's own renderer rather than reimplementing it,
+    // so what the browser posts is exactly what the parser round-trip covers.
+    expect(page).toContain(renderRequestIssue.toString());
+    expect(page).toContain("Example scenarios and expected results");
+    // Every role in the taxonomy is offered, as on the catalog.
+    for (const role of ["Developer", "QA", "Business Analyst", "Scrum Master", "UX Designer", "General"]) {
+      expect(page).toContain(`value="${role}"`);
+    }
+  });
+
+  it("explains auth and access failures, and offers a no-token fallback", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/request.html");
+
+    expect(page).toContain("401");
+    expect(page).toContain("403");
+    expect(page).toContain("404");
+    expect(page).toContain("issues/new?");
+    // The fallback carries the typed answers over to GitHub's own form.
+    expect(page).toContain('"skill-title": answer.title');
   });
 });

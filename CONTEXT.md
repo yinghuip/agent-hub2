@@ -29,7 +29,9 @@ GitHub Pages is the catalog. There is no backend service anywhere.
   Product Owner, Scrum Master, UX Designer, General}. Used for catalog grouping
   and on the request form.
 - **Skill request** — a GitHub issue created from the request form, under the
-  requester's own identity. Approving it with the label in
+  requester's own identity (their own fine-grained PAT, posted from the browser).
+  `renderRequestIssue` writes the issue body and `parseSkillRequest` reads it
+  back; the two are inverses, tested by round-trip. Approving it with the label in
   `agent-hub.config.json` (`approvalLabel`) triggers generation.
 - **Stale** — no update for `staleAfterDays` (6 months). A badge only; nothing
   is auto-removed.

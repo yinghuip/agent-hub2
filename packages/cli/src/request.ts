@@ -20,6 +20,19 @@ const SECTIONS = {
   team: "Your team",
 } as const;
 
+type Field = keyof typeof SECTIONS;
+
+/**
+ * The section order, shared with the catalog's request form so the page and
+ * the parser cannot drift apart.
+ */
+export const REQUEST_SECTIONS: { field: Field; heading: string }[] = (Object.keys(SECTIONS) as Field[]).map(
+  (field) => ({ field, heading: SECTIONS[field] }),
+);
+
+/** Labels every request carries, so triage can find them. */
+export const REQUEST_LABELS = ["skill-request", "needs-triage"];
+
 const NO_RESPONSE = /^_no response_$/i;
 
 /** Split a GitHub issue-form body into `### Heading` -> answer. */
@@ -31,6 +44,7 @@ function splitSections(body: string): Map<string, string> {
     const heading = (newline === -1 ? part : part.slice(0, newline)).trim();
     const value = (newline === -1 ? "" : part.slice(newline + 1))
       .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/^\\(\\*)###/gm, "$1###")
       .trim();
     sections.set(heading, NO_RESPONSE.test(value) ? "" : value);
   }
@@ -80,9 +94,9 @@ function parseScenarios(text: string): { scenarios: SkillRequest["scenarios"]; e
 export function parseSkillRequest(body: string): ParseResult {
   const sections = splitSections(body);
   const errors: RequestError[] = [];
-  const value = (field: keyof typeof SECTIONS) => sections.get(SECTIONS[field])?.trim() ?? "";
+  const value = (field: Field) => sections.get(SECTIONS[field])?.trim() ?? "";
 
-  for (const field of Object.keys(SECTIONS) as (keyof typeof SECTIONS)[]) {
+  for (const field of Object.keys(SECTIONS) as Field[]) {
     if (value(field) === "") {
       errors.push({ code: "missing-section", field, message: `"${SECTIONS[field]}" is empty or missing` });
     }
@@ -115,4 +129,36 @@ export function parseSkillRequest(body: string): ParseResult {
       team: value("team"),
     },
   };
+}
+
+/** What the request form collects: roles ticked, scenarios still free text. */
+export type RequestAnswers = {
+  title: string;
+  roles: string[];
+  problem: string;
+  scenarios: string;
+  team: string;
+};
+
+/**
+ * The issue a submitted request becomes; the inverse of `parseSkillRequest`.
+ *
+ * The catalog's request form embeds this function verbatim rather than
+ * reimplementing it, so keep it free of imports: it may only reach for
+ * `REQUEST_SECTIONS` and `REQUEST_LABELS`, which the page embeds alongside it.
+ */
+export function renderRequestIssue(answers: RequestAnswers): { title: string; body: string; labels: string[] } {
+  const values: Record<string, string> = {
+    title: answers.title,
+    roles: answers.roles.join(", "),
+    problem: answers.problem,
+    scenarios: answers.scenarios,
+    team: answers.team,
+  };
+
+  const body = REQUEST_SECTIONS.map(
+    (section) => `### ${section.heading}\n\n${values[section.field]!.replace(/^(\\*)###/gm, "\\$1###")}\n`,
+  ).join("\n");
+
+  return { title: `Skill request: ${answers.title}`, body, labels: REQUEST_LABELS.slice() };
 }
