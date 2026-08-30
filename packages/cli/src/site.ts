@@ -594,7 +594,7 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 
 /* Recently added: a reel, so it is not a second grid. */
 .reel { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(19rem, 22rem); justify-content: start; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
-.reel .tile { scroll-snap-align: start; border: 1px solid var(--line); border-left-width: 4px; }
+.reel .tile { scroll-snap-align: start; }
 .recent h2, .role h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
 
 /* Catalog: rail plus one ruled sheet of tiles. */
@@ -621,10 +621,10 @@ section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); 
 .rail-select { display: none; }
 .catalog-body { min-width: 0; }
 .role { padding: 0 0 clamp(2rem, 4vw, 3rem); max-width: none; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1px; }
 
 /* Tiles read as one ruled sheet: gap is the rule, the background is the ink. */
-.tile { position: relative; background: var(--bg); padding: 1.25rem 1.5rem 1.5rem; border-left: 4px solid transparent; transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.tile { position: relative; background: var(--bg); padding: 1.25rem 1.5rem 1.5rem; border-left: 4px solid transparent; outline: 1px solid var(--line); transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1); }
 .tile:hover { border-left-color: var(--accent); }
 .tile h3 a { color: var(--fg); text-decoration: none; }
 .tile h3 a::after { content: ""; position: absolute; inset: 0; }
