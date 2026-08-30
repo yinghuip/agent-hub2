@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { analyse, type AnalyseOptions } from "./analyse.ts";
+import { FONT_FILES } from "./assets.ts";
 import { generateManifests } from "./manifests.ts";
 import { generateSite } from "./site.ts";
 import type { ValidationError } from "./types.ts";
@@ -31,7 +32,16 @@ export async function build(options: AnalyseOptions): Promise<BuildResult> {
     ...generateManifests(analysis.config, analysis.plugins),
     ...generateSite(analysis, analysis.config),
   ]);
-  return { ok: true, errors: [], written: await writeFiles(options.root, files) };
+  const written = await writeFiles(options.root, files);
+
+  for (const font of FONT_FILES) {
+    const target = join(options.root, font.to);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(font.from, target);
+    written.push(font.to);
+  }
+
+  return { ok: true, errors: [], written: written.sort() };
 }
 
 /**

@@ -44,5 +44,5 @@ Sort every changed file into one or more areas: **UI**, **API**, **data**,
 
 ## 4. Report
 
-List findings most-serious first, each as `path:line — what is wrong — what to do`.
+List findings most-serious first, each as `path:line`, what is wrong, then what to do.
 Say plainly when a section had no findings; do not invent them to fill the list.

@@ -1,4 +1,4 @@
-import { readdir, utimes } from "node:fs/promises";
+import { readFile, readdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { build, renderRequestIssue } from "../src/index.ts";
@@ -206,6 +206,73 @@ describe("build", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain("schema");
     await expect(readJson(root, "plugins/pr-review/plugin.json")).rejects.toThrow();
+  });
+});
+
+describe("catalog shell", () => {
+  it("self-hosts the display, body and mono faces", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+
+    const styles = await read(root, "dist/site/styles.css");
+    expect(styles).toContain("@font-face");
+    expect(styles).toContain("./fonts/archivo-narrow.woff2");
+    expect(styles).toContain("./fonts/geist.woff2");
+    expect(styles).toContain("./fonts/geist-mono.woff2");
+    expect(styles).toContain("font-display: swap");
+    // No third-party font host: the catalog sits behind org access control.
+    expect(styles).not.toContain("fonts.googleapis.com");
+
+    for (const file of ["archivo-narrow.woff2", "geist.woff2", "geist-mono.woff2"]) {
+      const bytes = await readFile(join(root, "dist/site/fonts", file));
+      expect(bytes.length).toBeGreaterThan(1000);
+      expect(bytes.subarray(0, 4).toString("latin1")).toBe("wOF2");
+    }
+    // Only the display face is preloaded.
+    expect(await read(root, "dist/site/index.html")).toContain('rel="preload"');
+  });
+
+  it("filters by role from a rail, with a labelled control on small screens", async () => {
+    const root = await writeTree(
+      validTree({
+        CODEOWNERS: codeownersFor("pr-review", "story-splitter"),
+        "plugins/story-splitter/plugin.yaml": pluginYaml({
+          name: "story-splitter",
+          description: "Splits epics into stories.",
+          roles: ["Business Analyst"],
+        }),
+        "plugins/story-splitter/README.md": "# Story splitter\n",
+        "plugins/story-splitter/skills/split-story/SKILL.md":
+          "---\nname: split-story\ndescription: Split an epic.\n---\n\nSteps.\n",
+      }),
+    );
+    await build({ root, now: NOW });
+    const home = await read(root, "dist/site/index.html");
+
+    expect(home).toContain('class="rail"');
+    // Real icons from one library, not hand-drawn paths.
+    expect(home).toContain("<svg");
+    for (const role of ["Developer", "QA", "Business Analyst"]) {
+      expect(home).toContain(`data-role-filter="${role}"`);
+      expect(home).toContain(`<option value="${role}">`);
+    }
+    expect(home).toContain('aria-pressed="false"');
+    // Sections are role-owned, so picking a role can put the others away.
+    expect(home).toContain('data-role="Business Analyst"');
+    expect(home).toContain("Filter by role");
+  });
+
+  it("gives the plugin page one tab per tool instead of four stacked blocks", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/plugins/pr-review.html");
+
+    for (const tool of ["Claude Code", "GitHub Copilot", "OpenAI Codex", "Universal"]) {
+      expect(page).toContain(`data-tab="${tool}"`);
+    }
+    expect(page).toContain("/plugin install pr-review@agent-hub");
+    expect(page).toContain("install.sh");
+    expect(page).toContain("Copy");
   });
 });
 

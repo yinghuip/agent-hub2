@@ -5,7 +5,7 @@
     "email": "platform@example.com"
   },
   "metadata": {
-    "description": "The internal marketplace for agent skills — browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
+    "description": "The internal marketplace for agent skills. Browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
     "version": "1.0.0"
   },
   "plugins": [

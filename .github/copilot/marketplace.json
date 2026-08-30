@@ -1,6 +1,6 @@
 {
   "name": "agent-hub",
-  "description": "The internal marketplace for agent skills — browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
+  "description": "The internal marketplace for agent skills. Browse, request and install skills that work in Claude Code, GitHub Copilot and OpenAI Codex.",
   "plugins": [
     {
       "name": "pr-review-checklist",

@@ -1,3 +1,4 @@
+import { roleIcon } from "./assets.ts";
 import { catalogIndex } from "./manifests.ts";
 import type { Analysis, CatalogPlugin } from "./analyse.ts";
 import { REQUEST_LABELS, REQUEST_SECTIONS, renderRequestIssue } from "./request.ts";
@@ -20,137 +21,298 @@ function layout(config: HubConfig, title: string, body: string, depth: number): 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
+<link rel="preload" as="font" type="font/woff2" href="${base}/fonts/archivo-narrow.woff2" crossorigin>
 <link rel="stylesheet" href="${base}/styles.css">
 </head>
 <body>
 <header class="site">
   <a class="brand" href="${base}/index.html">${escape(config.displayName)}</a>
-  <nav>
+  <nav class="utility">
     <a href="${base}/request.html">Request a skill</a>
-    <a href="https://github.com/${escape(config.repo)}">Repo</a>
+    <a href="https://github.com/${escape(config.repo)}">Repository</a>
   </nav>
 </header>
 <main>
 ${body}
 </main>
-<footer>${escape(config.displayName)} — generated from <code>plugins/</code> by <code>agent-hub build</code>.</footer>
+<footer class="invert">
+  <div class="well">
+    <p class="foot-brand">${escape(config.displayName)}</p>
+    <p>Generated from <code>plugins/</code> by <code>agent-hub build</code>.</p>
+    <p><a href="https://github.com/${escape(config.repo)}">${escape(config.repo)}</a></p>
+  </div>
+</footer>
 </body>
 </html>
 `;
 }
 
-function badge(text: string, kind = ""): string {
-  return `<span class="badge ${kind}">${escape(text)}</span>`;
+/** Neutral, because staleness is a caution, not a second brand colour. */
+const staleLabel = '<span class="stale">Stale</span>';
+
+function tile(plugin: CatalogPlugin, index: number): string {
+  const search = [plugin.name, plugin.description, plugin.ownerTeam, ...plugin.keywords, ...plugin.roles]
+    .join(" ")
+    .toLowerCase();
+  return `<article class="tile${index === 0 ? " tile-wide" : ""}" data-roles="${escape(
+    plugin.roles.join("|"),
+  )}" data-search="${escape(search)}">
+  <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
+  <p class="desc">${escape(plugin.description)}</p>
+  <dl class="strip">
+    <div><dt>Version</dt><dd><code>${escape(plugin.version)}</code></dd></div>
+    <div><dt>Owner</dt><dd>${escape(plugin.ownerTeam)}</dd></div>
+    <div><dt>Updated</dt><dd>${formatDate(plugin.lastUpdated)}${plugin.stale ? ` ${staleLabel}` : ""}</dd></div>
+  </dl>
+</article>`;
 }
 
-function card(plugin: CatalogPlugin): string {
-  return `<article class="card" data-roles="${escape(plugin.roles.join("|"))}" data-search="${escape(
-    [plugin.name, plugin.description, plugin.ownerTeam, ...plugin.keywords, ...plugin.roles].join(" ").toLowerCase(),
-  )}">
-  <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
-  <p>${escape(plugin.description)}</p>
-  <p class="meta">v${escape(plugin.version)} · ${escape(plugin.ownerTeam)} · updated ${formatDate(plugin.lastUpdated)}
-  ${plugin.stale ? badge("Stale", "stale") : ""}</p>
-  <p class="roles">${plugin.roles.map((role) => badge(role)).join(" ")}</p>
-</article>`;
+function rail(populatedRoles: readonly string[]): string {
+  return `<nav class="rail" aria-label="Filter by role">
+  <button class="rail-item active" data-role-filter="" aria-pressed="true">
+    ${roleIcon("General")}<span>All</span>
+  </button>
+  ${populatedRoles
+    .map(
+      (role) => `<button class="rail-item" data-role-filter="${escape(role)}" aria-pressed="false">
+    ${roleIcon(role)}<span>${escape(role)}</span>
+  </button>`,
+    )
+    .join("\n  ")}
+</nav>
+<label class="rail-select">Filter by role
+  <select id="role-select">
+    <option value="">All roles</option>
+    ${populatedRoles.map((role) => `<option value="${escape(role)}">${escape(role)}</option>`).join("\n    ")}
+  </select>
+</label>`;
 }
 
 function homePage(analysis: Analysis, config: HubConfig): string {
   const { plugins, recentlyAdded } = analysis;
+  const populatedRoles = ROLES.filter((role) => plugins.some((plugin) => plugin.roles.includes(role)));
   const recent = recentlyAdded
-    .map((name) => plugins.find((p) => p.name === name))
-    .filter((p): p is CatalogPlugin => Boolean(p));
+    .map((name) => plugins.find((plugin) => plugin.name === name))
+    .filter((plugin): plugin is CatalogPlugin => Boolean(plugin));
+  const newest = plugins.slice().sort((a, b) => b.addedAt.localeCompare(a.addedAt))[0];
 
-  const populatedRoles = ROLES.filter((role) => plugins.some((p) => p.roles.includes(role)));
-  const roleFilters = `<nav class="filters" aria-label="Filter by role">
-  <button class="filter active" data-role-filter="">All</button>
-  ${populatedRoles.map((role) => `<button class="filter" data-role-filter="${escape(role)}">${escape(role)}</button>`).join("\n  ")}
-</nav>`;
-
-  const roleSections = ROLES.map((role) => {
-    const inRole = plugins.filter((p) => p.roles.includes(role));
-    if (inRole.length === 0) return "";
-    return `<section class="role" data-role="${escape(role)}">
+  const roleSections = populatedRoles
+    .map((role) => {
+      const inRole = plugins.filter((plugin) => plugin.roles.includes(role));
+      return `<section class="role" data-role="${escape(role)}">
   <h2>${escape(role)}</h2>
-  <div class="grid">${inRole.map(card).join("\n")}</div>
+  <div class="grid">${inRole.map((plugin, index) => tile(plugin, index)).join("\n")}</div>
 </section>`;
-  })
-    .filter(Boolean)
+    })
     .join("\n");
 
-  const body = `<h1>${escape(config.displayName)}</h1>
-<p class="lede">${escape(config.description)}</p>
-<input id="search" type="search" placeholder="Search ${plugins.length} skills by name, keyword or team…" autocomplete="off">
-${roleFilters}
-<p id="no-results" hidden>No skills match that search.</p>
+  const body = `<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Internal marketplace</p>
+    <h1>${escape(config.displayName)}</h1>
+    <p class="lede">${escape(config.description)}</p>
+    <input id="search" type="search" placeholder="Search by name, keyword or team" autocomplete="off"
+      aria-label="Search skills">
+  </div>
+  <aside class="hero-counts">
+    <div><span class="count">${plugins.length}</span><span class="count-label">Skills</span></div>
+    <div><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></div>
+    ${
+      newest
+        ? `<div><span class="count count-date">${formatDate(newest.addedAt)}</span><span class="count-label">Newest</span></div>`
+        : ""
+    }
+  </aside>
+</section>
+
 ${
   recent.length
-    ? `<section class="recent"><h2>Recently added</h2><div class="grid">${recent.map(card).join("\n")}</div></section>`
+    ? `<section class="recent">
+  <h2>Recently added</h2>
+  <div class="reel">${recent.map((plugin, index) => tile(plugin, index + 1)).join("\n")}</div>
+</section>`
     : ""
 }
-${roleSections}
+
+<section class="catalog">
+  ${rail(populatedRoles)}
+  <div class="catalog-body">
+    <p id="no-results" hidden>No skills match that search.</p>
+    ${roleSections}
+  </div>
+</section>
+
+<section class="band invert">
+  <div class="well">
+    <h2>Install the marketplace once</h2>
+    <pre><code>/plugin marketplace add ${escape(config.repo)}
+/plugin install &lt;skill&gt;@${escape(config.name)}</code></pre>
+    <p>Then install any skill by name. Copilot CLI reads the same commands, and every listing carries a
+    universal script for tools that do not.</p>
+  </div>
+</section>
+
+<section class="paths">
+  <p class="eyebrow">Two ways in</p>
+  <div class="paths-grid">
+    <article class="path path-major">
+      <h2>Contribute a skill</h2>
+      <p>Add a directory under <code>plugins/</code>, write one <code>plugin.yaml</code> and your
+      <code>SKILL.md</code> files, then open a pull request. CI generates every manifest.</p>
+      <a class="cta" href="https://github.com/${escape(config.repo)}/blob/main/CONTRIBUTING.md">Read the guide</a>
+    </article>
+    <article class="path">
+      <h2>Request a skill</h2>
+      <p>Describe what you need in plain language. Approved requests are drafted by an agent and land as a
+      pull request with you as reviewer.</p>
+      <a class="cta" href="./request.html">Open a request</a>
+    </article>
+  </div>
+</section>
+
 <script id="catalog" type="application/json">${embedJson(catalogIndex(analysis, config))}</script>
 <script>
 (function () {
   var input = document.getElementById("search");
-  var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
-  var sections = Array.prototype.slice.call(document.querySelectorAll("section"));
-  var filters = Array.prototype.slice.call(document.querySelectorAll("[data-role-filter]"));
+  var select = document.getElementById("role-select");
+  var tiles = Array.prototype.slice.call(document.querySelectorAll(".tile"));
+  var sections = Array.prototype.slice.call(document.querySelectorAll("section.role, section.recent"));
+  var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-role-filter]"));
   var empty = document.getElementById("no-results");
   var role = "";
 
   function apply() {
     var terms = input.value.toLowerCase().split(/\\s+/).filter(Boolean);
     var visible = 0;
-    cards.forEach(function (card) {
-      var haystack = card.getAttribute("data-search");
-      var roles = card.getAttribute("data-roles").split("|");
+    tiles.forEach(function (tile) {
+      var haystack = tile.getAttribute("data-search");
+      var roles = tile.getAttribute("data-roles").split("|");
       var match = terms.every(function (term) { return haystack.indexOf(term) !== -1; }) &&
         (role === "" || roles.indexOf(role) !== -1);
-      card.hidden = !match;
+      tile.hidden = !match;
       if (match) visible++;
     });
     sections.forEach(function (section) {
-      section.hidden = section.querySelectorAll(".card:not([hidden])").length === 0;
+      // A role section belongs to one role; picking a role puts the others away.
+      var sectionRole = section.getAttribute("data-role");
+      var wrongRole = role !== "" && sectionRole !== null && sectionRole !== role;
+      section.hidden = wrongRole || section.querySelectorAll(".tile:not([hidden])").length === 0;
     });
     empty.hidden = visible !== 0;
   }
 
-  input.addEventListener("input", apply);
-  filters.forEach(function (button) {
-    button.addEventListener("click", function () {
-      role = button.getAttribute("data-role-filter");
-      filters.forEach(function (other) { other.classList.toggle("active", other === button); });
-      apply();
+  function setRole(next) {
+    role = next;
+    buttons.forEach(function (button) {
+      var on = button.getAttribute("data-role-filter") === role;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
     });
+    if (select.value !== role) select.value = role;
+    apply();
+  }
+
+  input.addEventListener("input", apply);
+  select.addEventListener("change", function () { setRole(select.value); });
+  buttons.forEach(function (button) {
+    button.addEventListener("click", function () { setRole(button.getAttribute("data-role-filter")); });
   });
+
+  // Tiles arrive as you reach them. No scroll listener, and nothing moves under reduced motion.
+  if (window.IntersectionObserver && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry, index) {
+        if (!entry.isIntersecting) return;
+        entry.target.style.transitionDelay = (index % 6) * 60 + "ms";
+        entry.target.classList.add("in");
+        observer.unobserve(entry.target);
+      });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    tiles.forEach(function (tile) { tile.classList.add("reveal"); observer.observe(tile); });
+  }
 })();
 </script>`;
   return layout(config, config.displayName, body, 0);
 }
 
-function installBlock(label: string, command: string): string {
-  return `<section class="install"><h3>${escape(label)}</h3><pre><code>${escape(command)}</code></pre></section>`;
-}
+const INSTALL_TABS: { label: string; key: keyof CatalogPlugin["install"] }[] = [
+  { label: "Claude Code", key: "claudeCode" },
+  { label: "GitHub Copilot", key: "copilot" },
+  { label: "OpenAI Codex", key: "codex" },
+  { label: "Universal", key: "universal" },
+];
 
 function pluginPage(plugin: CatalogPlugin, config: HubConfig): string {
-  const body = `<h1>${escape(plugin.name)} ${plugin.stale ? badge("Stale", "stale") : ""}</h1>
-<p class="lede">${escape(plugin.description)}</p>
-<dl class="facts">
-  <dt>Version</dt><dd>${escape(plugin.version)}</dd>
-  <dt>Owner</dt><dd>${escape(plugin.ownerTeam)} (${escape(plugin.author.name)})</dd>
-  <dt>Roles</dt><dd>${plugin.roles.map((role) => badge(role)).join(" ")}</dd>
-  <dt>Last updated</dt><dd>${formatDate(plugin.lastUpdated)}</dd>
-  <dt>Skills</dt><dd>${plugin.skills.map((s) => escape(s.name)).join(", ")}</dd>
-</dl>
-<h2>Install</h2>
-${installBlock("Claude Code", plugin.install.claudeCode)}
-${installBlock("GitHub Copilot", plugin.install.copilot)}
-${installBlock("OpenAI Codex", plugin.install.codex)}
-${installBlock("Any tool (universal script)", plugin.install.universal)}
-<h2>README</h2>
-<article class="readme">${plugin.readmeHtml}</article>`;
-  return layout(config, `${plugin.name} — ${config.displayName}`, body, 1);
+  const body = `<article class="detail">
+  <header class="detail-head">
+    <h1>${escape(plugin.name)}</h1>
+    ${plugin.stale ? staleLabel : ""}
+    <p class="lede">${escape(plugin.description)}</p>
+  </header>
+
+  <dl class="facts">
+    <div><dt>Version</dt><dd><code>${escape(plugin.version)}</code></dd></div>
+    <div><dt>Owner</dt><dd>${escape(plugin.ownerTeam)} (${escape(plugin.author.name)})</dd></div>
+    <div><dt>Roles</dt><dd>${plugin.roles.map((role) => escape(role)).join(", ")}</dd></div>
+    <div><dt>Last updated</dt><dd>${formatDate(plugin.lastUpdated)}</dd></div>
+    <div><dt>Skills</dt><dd>${plugin.skills.map((skill) => `<code>${escape(skill.name)}</code>`).join(" ")}</dd></div>
+  </dl>
+
+  <section class="install">
+    <h2>Install</h2>
+    <div class="tabs" role="tablist">
+      ${INSTALL_TABS.map(
+        (tab, index) =>
+          `<button role="tab" data-tab="${escape(tab.label)}" class="tab${index === 0 ? " active" : ""}"
+        aria-selected="${index === 0 ? "true" : "false"}">${escape(tab.label)}</button>`,
+      ).join("\n      ")}
+    </div>
+    ${INSTALL_TABS.map(
+      (tab, index) => `<div class="panel${index === 0 ? " active" : ""}" data-panel="${escape(tab.label)}">
+      <pre><code>${escape(plugin.install[tab.key])}</code></pre>
+      <button class="copy" type="button">Copy</button>
+    </div>`,
+    ).join("\n    ")}
+  </section>
+
+  <section class="readme">
+    <h2>Readme</h2>
+    <div class="prose">${plugin.readmeHtml}</div>
+  </section>
+</article>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  var panels = Array.prototype.slice.call(document.querySelectorAll(".panel"));
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      var name = tab.getAttribute("data-tab");
+      tabs.forEach(function (other) {
+        var on = other === tab;
+        other.classList.toggle("active", on);
+        other.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        panel.classList.toggle("active", panel.getAttribute("data-panel") === name);
+      });
+    });
+  });
+  panels.forEach(function (panel) {
+    var button = panel.querySelector(".copy");
+    button.addEventListener("click", function () {
+      var text = panel.querySelector("code").textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        button.textContent = "Copied";
+        setTimeout(function () { button.textContent = "Copy"; }, 1600);
+      }, function () {
+        button.textContent = "Press Ctrl-C";
+      });
+    });
+  });
+})();
+</script>`;
+  return layout(config, `${plugin.name} - ${config.displayName}`, body, 1);
 }
 
 function requestPage(config: HubConfig): string {
@@ -182,7 +344,7 @@ function requestPage(config: HubConfig): string {
     <input name="token" type="password" required autocomplete="off" placeholder="github_pat_…"></label>
   <p class="hint">A <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained
   personal access token</a> scoped to <code>${escape(config.repo)}</code> with <strong>Issues: Read and write</strong>.
-  It goes straight from your browser to GitHub — this page has no server, and never stores your token.</p>
+  It goes straight from your browser to GitHub. This page has no server, and never stores your token.</p>
 
   <button type="submit">Create the request</button>
   <p id="status" role="status"></p>
@@ -191,7 +353,7 @@ function requestPage(config: HubConfig): string {
 <p class="hint">No token, or it isn't working? <a id="fallback" href="https://github.com/${escape(
     config.repo,
   )}/issues/new?template=skill-request.yml" target="_blank" rel="noopener">Open the same form on GitHub</a>
-— it carries over whatever you have typed here.</p>
+It carries over whatever you have typed here.</p>
 
 <script>
 (function () {
@@ -249,9 +411,9 @@ function requestPage(config: HubConfig): string {
   }
 
   function explain(response) {
-    if (response.status === 401) return "GitHub rejected that token (401). It may be expired or mistyped — create a new fine-grained token and try again.";
+    if (response.status === 401) return "GitHub rejected that token (401). It may be expired or mistyped, so create a new fine-grained token and try again.";
     if (response.status === 403) return "That token is not allowed to open issues here (403). Check it grants Issues: Read and write.";
-    if (response.status === 404) return "This repository is not visible to that token (404). Fine-grained tokens for an organisation repo need an admin to approve them, so ask the platform team — or use the GitHub form below.";
+    if (response.status === 404) return "This repository is not visible to that token (404). Fine-grained tokens for an organisation repo need an admin to approve them, so ask the platform team, or use the GitHub form below.";
     if (response.status === 422) return "GitHub could not accept the request (422). Check every field is filled in, then try again.";
     return "GitHub returned an unexpected error (" + response.status + "). Use the GitHub form below instead.";
   }
@@ -301,44 +463,290 @@ function requestPage(config: HubConfig): string {
   });
 })();
 </script>`;
-  return layout(config, `Request a skill — ${config.displayName}`, body, 0);
+  return layout(config, `Request a skill - ${config.displayName}`, body, 0);
 }
 
-const STYLES = `:root { color-scheme: light dark; --fg: #12151a; --muted: #5b6472; --bg: #fbfbfd; --card: #fff; --line: #dfe3ea; --accent: #3d5afe; }
-@media (prefers-color-scheme: dark) { :root { --fg: #e8eaf0; --muted: #9aa4b2; --bg: #14171c; --card: #1c2027; --line: #2c323c; --accent: #8fa2ff; } }
+const STYLES = `@font-face {
+  font-family: "Archivo Narrow Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("./fonts/archivo-narrow.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/geist.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Geist Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./fonts/geist-mono.woff2") format("woff2-variations");
+}
+
+/* Tokens read off bridgestone.com.sg: accent rgb(228, 35, 0), cool neutral ramp, zero radius. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --line: #dfdfe0;
+  --line-ui: #8d8d8d;
+  --fg: #222326;
+  --muted: #5a5a5a;
+  --accent: #e42300;
+  --accent-fg: #c11d00;
+  --on-accent: #ffffff;
+  --invert-bg: #141416;
+  --invert-fg: #f2f2f3;
+  --invert-muted: #a0a1a5;
+  --invert-line: #34363a;
+  --display: "Archivo Narrow Variable", ui-sans-serif, system-ui, sans-serif;
+  --body: "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --well: 1400px;
+  --gutter: clamp(1rem, 4vw, 3rem);
+  --rail: 76px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416;
+    --surface: #1c1d20;
+    --line: #34363a;
+    --line-ui: #6e7075;
+    --fg: #f2f2f3;
+    --muted: #a0a1a5;
+    --accent-fg: #ff5a2e;
+    --invert-bg: #f7f7f7;
+    --invert-fg: #222326;
+    --invert-muted: #5a5a5a;
+    --invert-line: #dfdfe0;
+  }
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-header.site { display: flex; gap: 1rem; align-items: baseline; justify-content: space-between; padding: 1rem 1.5rem; border-bottom: 1px solid var(--line); }
-.brand { font-weight: 700; text-decoration: none; color: var(--fg); }
-nav a { margin-left: 1rem; color: var(--accent); }
-main { max-width: 60rem; margin: 0 auto; padding: 1.5rem; }
-h1 { margin-bottom: .25rem; }
-.lede { color: var(--muted); margin-top: 0; }
-#search { width: 100%; padding: .7rem .9rem; font-size: 1rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--card); color: var(--fg); }
-.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; }
-.card h3 { margin: 0 0 .35rem; font-size: 1.05rem; }
-.card p { margin: .25rem 0; }
-.meta { color: var(--muted); font-size: .85rem; }
-.badge { display: inline-block; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .75rem; color: var(--muted); }
-.filters { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0 1.2rem; }
-.filter { margin: 0; padding: .35rem .8rem; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; }
-.filter.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.badge.stale { border-color: #d08700; color: #d08700; }
-pre { background: var(--card); border: 1px solid var(--line); border-radius: .5rem; padding: .8rem; overflow-x: auto; }
-.facts { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; }
-.hint { color: var(--muted); font-size: .875rem; margin: .3rem 0 0; }
-#status { margin-top: 1rem; }
-#status.error { color: #c0392b; }
-form label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
-form input[type=text], form input:not([type]), form textarea { width: 100%; padding: .6rem; border: 1px solid var(--line); border-radius: .4rem; background: var(--card); color: var(--fg); font: inherit; }
-fieldset { margin-top: 1rem; border: 1px solid var(--line); border-radius: .5rem; }
-label.check { display: inline-block; margin-right: 1rem; font-weight: 400; }
-button { margin-top: 1.25rem; padding: .6rem 1.1rem; border: 0; border-radius: .4rem; background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer; }
-footer { max-width: 60rem; margin: 2rem auto; padding: 1rem 1.5rem; color: var(--muted); border-top: 1px solid var(--line); font-size: .85rem; }
-a { color: var(--accent); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 16px/1.55 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-fg); }
+code, pre { font-family: var(--mono); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2, h3, .eyebrow, .count, .brand, .rail-item span, .tab, .cta, .count-label {
+  font-family: var(--display);
+  text-transform: uppercase;
+}
+h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.05; margin: 0; }
+h1 { font-size: clamp(2.75rem, 1.6rem + 4.4vw, 5rem); }
+h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem); }
+h3 { font-size: 1.25rem; }
+.eyebrow {
+  font-size: .75rem;
+  letter-spacing: .14em;
+  color: var(--muted);
+  margin: 0 0 .75rem;
+}
+.lede { color: var(--muted); max-width: 68ch; margin: 1rem 0 0; }
+
+/* Header: one line, capped height. */
+header.site {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 72px;
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-family: var(--display); font-weight: 700; font-size: 1.35rem; letter-spacing: .02em; text-decoration: none; color: var(--fg); }
+.utility { display: flex; gap: 1.5rem; font-size: .875rem; }
+.utility a { color: var(--fg); text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 2px; }
+.utility a:hover { border-bottom-color: var(--accent); }
+
+main { display: block; }
+section { padding-block: clamp(3rem, 6vw, 6rem); padding-inline: var(--gutter); max-width: var(--well); margin: 0 auto; }
+.well { max-width: var(--well); margin: 0 auto; padding-inline: var(--gutter); }
+
+/* Hero: asymmetric split, headline plus subtext plus search, nothing else. */
+.hero { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); align-items: end; padding-top: clamp(2rem, 5vw, 6rem); }
+#search {
+  width: 100%;
+  margin-top: 2rem;
+  padding: .9rem 1rem;
+  font: 400 1rem var(--body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line-ui);
+  border-radius: 0;
+}
+.hero-counts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.hero-counts div { background: var(--accent); color: var(--on-accent); padding: 1.25rem 1.5rem; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.count { font-size: 2.5rem; font-weight: 700; line-height: 1; }
+.count-date { font-size: 1.5rem; }
+.count-label { font-size: .75rem; letter-spacing: .14em; }
+
+/* Recently added: a reel, so it is not a second grid. */
+.reel { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(19rem, 22rem); justify-content: start; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
+.reel .tile { scroll-snap-align: start; border: 1px solid var(--line); border-left-width: 4px; }
+.recent h2, .role h2 { border-bottom: 2px solid var(--fg); padding-bottom: .5rem; margin-bottom: 1.5rem; }
+
+/* Catalog: rail plus one ruled sheet of tiles. */
+.catalog { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); gap: clamp(1.5rem, 3vw, 3rem); align-items: start; }
+.rail { position: sticky; top: 1.5rem; display: grid; gap: 1px; background: var(--invert-line); border: 1px solid var(--invert-line); }
+.rail-item {
+  display: grid;
+  justify-items: center;
+  gap: .35rem;
+  padding: .85rem .25rem;
+  background: var(--invert-bg);
+  color: var(--invert-muted);
+  border: 0;
+  border-left: 4px solid transparent;
+  border-radius: 0;
+  font-size: .5625rem;
+  letter-spacing: .08em;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+}
+.rail-item:hover { color: var(--invert-fg); }
+.rail-item.active { color: var(--invert-fg); border-left-color: var(--accent); }
+.rail-select { display: none; }
+.catalog-body { min-width: 0; }
+.role { padding: 0 0 clamp(2rem, 4vw, 3rem); max-width: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+
+/* Tiles read as one ruled sheet: gap is the rule, the background is the ink. */
+.tile { position: relative; background: var(--bg); padding: 1.25rem 1.5rem 1.5rem; border-left: 4px solid transparent; transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.tile:hover { border-left-color: var(--accent); }
+.tile h3 a { color: var(--fg); text-decoration: none; }
+.tile h3 a::after { content: ""; position: absolute; inset: 0; }
+.tile:hover h3 a { color: var(--accent-fg); }
+.desc { color: var(--muted); font-size: .9375rem; margin: .5rem 0 1.25rem; }
+@media (min-width: 1024px) { .tile-wide { grid-column: span 2; } }
+
+/* Metadata as columns, not a run of separator dots. */
+.strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding-top: 1rem; border-top: 1px solid var(--line); }
+.strip dt { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); }
+.strip dd { margin: .25rem 0 0; font-size: .8125rem; }
+.stale { display: inline-block; margin-left: .35rem; padding: 0 .35rem; border: 1px solid var(--line-ui); font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .1em; color: var(--muted); }
+
+/* Inverted bands: the page's two moments of scale. */
+.invert { background: var(--invert-bg); color: var(--invert-fg); max-width: none; }
+.band pre { background: transparent; border: 0; padding: 0; margin: 1.5rem 0; font-size: clamp(1rem, .8rem + .6vw, 1.25rem); overflow-x: auto; }
+.band h2 { color: var(--invert-fg); }
+.band p { color: var(--invert-muted); max-width: 60ch; }
+footer.invert { padding-block: 3rem; font-size: .875rem; }
+footer .well { display: grid; gap: .35rem; }
+footer p { margin: 0; color: var(--invert-muted); }
+.foot-brand { font-family: var(--display); text-transform: uppercase; font-weight: 700; color: var(--invert-fg); font-size: 1.1rem; }
+footer a { color: var(--invert-fg); }
+
+/* Two paths: a 60/40 split, not three equal cards. */
+.paths-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.path { background: var(--bg); padding: clamp(1.5rem, 3vw, 2.5rem); }
+.path p { color: var(--muted); max-width: 52ch; }
+.cta {
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: .8rem 1.5rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  text-decoration: none;
+  font-size: .8125rem;
+  letter-spacing: .12em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cta:active { transform: translateY(1px); }
+
+/* Plugin detail. */
+.detail { max-width: 68rem; }
+.detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; }
+.detail-head .lede { flex-basis: 100%; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0; margin: 2.5rem 0; border-top: 1px solid var(--line); }
+.facts > div { display: grid; gap: .35rem; padding: 1rem 1.25rem 1rem 0; border-bottom: 1px solid var(--line); }
+.facts dt { font-family: var(--display); text-transform: uppercase; font-size: .625rem; letter-spacing: .12em; color: var(--muted); }
+.facts dd { margin: 0; font-size: .9375rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); border: 1px solid var(--line); border-bottom: 0; }
+.tab { flex: 1 1 auto; padding: .75rem 1rem; background: var(--bg); color: var(--muted); border: 0; border-top: 3px solid transparent; border-radius: 0; font-size: .75rem; letter-spacing: .1em; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tab.active { color: var(--fg); border-top-color: var(--accent); }
+.panel { display: none; position: relative; border: 1px solid var(--line); padding: 1.25rem; background: var(--surface); }
+.panel.active { display: block; }
+.panel pre { margin: 0; overflow-x: auto; font-size: .875rem; }
+.copy { position: absolute; top: .75rem; right: .75rem; padding: .35rem .75rem; background: var(--bg); color: var(--fg); border: 1px solid var(--line-ui); border-radius: 0; font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .1em; cursor: pointer; }
+.prose { max-width: 68ch; }
+.prose h1, .prose h2, .prose h3 { margin: 2rem 0 .75rem; }
+.prose h1 { font-size: 1.75rem; }
+.prose h2 { font-size: 1.35rem; }
+.prose h3 { font-size: 1.1rem; }
+.prose code { background: var(--surface); padding: .1rem .3rem; font-size: .875em; }
+.prose pre { background: var(--surface); border: 1px solid var(--line); padding: 1rem; overflow-x: auto; }
+.prose pre code { background: none; padding: 0; }
+
+/* Forms: every perceivable border clears 3:1. */
+form label { display: block; margin: 1.5rem 0 .35rem; font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
+form input, form textarea, form select {
+  width: 100%;
+  padding: .75rem;
+  font: 400 1rem var(--body);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line-ui);
+  border-radius: 0;
+}
+fieldset { margin-top: 1.5rem; padding: 1rem 1.25rem 1.25rem; border: 1px solid var(--line); }
+legend { font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
+label.check { display: inline-flex; align-items: center; gap: .4rem; margin: 0 1.25rem .5rem 0; font-family: var(--body); text-transform: none; letter-spacing: 0; font-size: .9375rem; }
+label.check input { width: auto; }
+button[type="submit"] {
+  margin-top: 2rem;
+  padding: .9rem 1.75rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 0;
+  border-radius: 0;
+  font: 700 .8125rem var(--display);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  cursor: pointer;
+}
+button[type="submit"]:active { transform: translateY(1px); }
+button[disabled] { opacity: .6; cursor: progress; }
+.hint { color: var(--muted); font-size: .8125rem; margin: .4rem 0 0; max-width: 60ch; }
+#status { margin-top: 1.25rem; }
+#status.error { color: var(--accent-fg); }
+#no-results { color: var(--muted); }
+.icon { display: block; }
+
+/* Motion: entry and reveal only, and only when it is welcome. */
+.reveal { opacity: 0; transform: translateY(8px); transition: opacity 400ms cubic-bezier(0.16, 1, 0.3, 1), transform 400ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms; }
+.reveal.in { opacity: 1; transform: none; }
+
+@media (max-width: 1023px) {
+  .catalog { grid-template-columns: minmax(0, 1fr); }
+  .rail { display: none; }
+  .rail-select { display: block; margin-bottom: 1.5rem; font-family: var(--display); text-transform: uppercase; font-size: .75rem; letter-spacing: .1em; }
+  .rail-select select { margin-top: .35rem; }
+}
+@media (max-width: 767px) {
+  .hero, .paths-grid { grid-template-columns: minmax(0, 1fr); }
+  .hero-counts div { padding: 1rem 1.25rem; }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  header.site { height: auto; padding-block: .75rem; flex-wrap: wrap; }
+  .strip { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+  .reveal { opacity: 1; transform: none; }
+}
 `;
 
 /** The whole static catalog site, keyed by path under `dist/site`. */
