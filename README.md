@@ -44,6 +44,34 @@ triage. The third is applied by the duplicate check below; create it up front so
 it has a description and a colour, and so triage can filter on it before the
 first one lands.
 
+Generation also needs a key for whichever model you run it on, in one secret:
+
+```bash
+gh secret set AGENT_API_KEY
+```
+
+## The generation engine
+
+Which model drafts and evaluates skills is a config value, not a property of the
+workflow. `engine` in `agent-hub.config.json`:
+
+```json
+"engine": {
+  "id": "deepseek",
+  "baseUrl": "https://api.deepseek.com/anthropic",
+  "model": "deepseek-v4-pro",
+  "subagentModel": "deepseek-v4-flash"
+}
+```
+
+The runner drives the Claude Code CLI, which speaks the Anthropic wire protocol
+to whatever `baseUrl` names — so any provider offering an Anthropic-compatible
+endpoint is one edit away, and `AGENT_API_KEY` holds that provider's key. Drop
+`baseUrl` to use Anthropic's own API. `subagentModel` is worth setting: eval runs
+spawn one subagent per eval, and they are short, numerous and cheaper on a
+smaller model. Whatever you pick is named in the pull request body, because a
+reviewer should know what wrote the skill in front of them.
+
 ## Access control
 
 The catalog is a GitHub Pages site. Set **Settings → Pages → Visibility** to
@@ -56,9 +84,16 @@ does not change this setting — it is a one-time repo configuration.
 Use **Request a skill** on the catalog site, or open the
 [skill request issue form](../../issues/new?template=skill-request.yml) directly.
 The platform team triages; applying the approval label (`approvalLabel` in
-`agent-hub.config.json`) starts an agent that drafts the plugin, evaluates it
-against the scenarios you wrote, and opens a pull request with you and the
-platform reviewers (`platformReviewers`) as reviewers.
+`agent-hub.config.json`) starts an agent that drafts the plugin and turns each
+scenario you wrote into an eval. The workflow then runs those evals in fresh
+sessions, grades them against your expectations, and sends the failures back to
+be fixed — up to three rounds, stopping as soon as everything passes. It opens a
+pull request with you and the platform reviewers (`platformReviewers`) as
+reviewers, carrying the grading table for every round in the body.
+
+A skill that still fails on the last round gets its pull request anyway, with
+the misses spelled out, and the run is marked failed. Nothing arrives claiming
+to work on nobody's evidence.
 
 The catalog's form asks for no credential. It checks the answers a requester
 types — at least one role, at least one `Scenario:`/`Expected:` pair — then opens

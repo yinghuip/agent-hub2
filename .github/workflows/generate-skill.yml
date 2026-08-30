@@ -12,14 +12,20 @@ permissions:
   pull-requests: write
 
 jobs:
-  # The label and the reviewers live in agent-hub.config.json, the single
-  # configuration point, so renaming either is one edit.
+  # The label, the reviewers and the engine live in agent-hub.config.json, the
+  # single configuration point, so changing any of them is one edit. Point
+  # `engine` at a different provider and the whole pipeline — drafting, eval
+  # runs, grading, refining — moves with it.
   config:
     runs-on: ubuntu-latest
     outputs:
       approval-label: ${{ steps.read.outputs.approval-label }}
       reviewers: ${{ steps.read.outputs.reviewers }}
       owner-team: ${{ steps.read.outputs.owner-team }}
+      engine-id: ${{ steps.read.outputs.engine-id }}
+      engine-base-url: ${{ steps.read.outputs.engine-base-url }}
+      engine-model: ${{ steps.read.outputs.engine-model }}
+      engine-subagent-model: ${{ steps.read.outputs.engine-subagent-model }}
     steps:
       - uses: actions/checkout@v4
       - id: read
@@ -28,12 +34,19 @@ jobs:
             echo "approval-label=$(jq -r .approvalLabel agent-hub.config.json)"
             echo "reviewers=$(jq -r '.platformReviewers | join(",")' agent-hub.config.json)"
             echo "owner-team=$(jq -r .defaultOwnerTeam agent-hub.config.json)"
+            echo "engine-id=$(jq -r '.engine.id // "anthropic"' agent-hub.config.json)"
+            echo "engine-base-url=$(jq -r '.engine.baseUrl // ""' agent-hub.config.json)"
+            echo "engine-model=$(jq -r '.engine.model // ""' agent-hub.config.json)"
+            echo "engine-subagent-model=$(jq -r '.engine.subagentModel // ""' agent-hub.config.json)"
           } >> "$GITHUB_OUTPUT"
 
   generate:
     needs: config
     if: github.event.label.name == needs.config.outputs.approval-label
     runs-on: ubuntu-latest
+    # Generation plus up to three eval rounds; the cap stops a skill that will
+    # never pass from burning the budget in a loop nobody is watching.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +54,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      - name: Record where the run starts
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Parse the request
         id: request
@@ -75,9 +92,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Generate the plugin
-        uses: anthropics/claude-code-action@v1
+        uses: ./.github/actions/agent-run
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          api-key: ${{ secrets.AGENT_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          base-url: ${{ needs.config.outputs.engine-base-url }}
+          model: ${{ needs.config.outputs.engine-model }}
+          subagent-model: ${{ needs.config.outputs.engine-subagent-model }}
+          github-token: ${{ github.token }}
+          allowed-tools: Bash,Read,Write,Edit,Glob,Grep
           prompt: |
             You are generating one new plugin for this Agent Hub marketplace from an approved request.
 
@@ -103,18 +125,200 @@ jobs:
             - Add a CODEOWNERS line for the new plugin directory owned by ${{ needs.config.outputs.reviewers }},
               each handle prefixed with @ — CODEOWNERS needs resolvable handles, which the requester's
               free-text answer never was.
+            - Write the evals next to the skill, at skills/<skill>/evals/evals.json, in skill-creator's
+              schema — one eval per scenario in the request, in the order the request lists them:
+              {"skill_name": "<skill>", "evals": [{"id": 1, "prompt": "<the scenario, phrased the way a
+              user would actually say it>", "expected_output": "<the request's expected result>",
+              "files": [], "expectations": ["<verifiable statement>"]}]}
+              Give each eval two to four expectations, each one objectively checkable by reading the
+              run's output ("lists every failing check with its file and line", not "is helpful").
+              These are the bar the skill has to clear, so write them honestly: the rest of this
+              workflow runs them in fresh sessions, grades them, and will not open the door on a
+              skill that fails. Writing an expectation you know is trivially true wastes the run.
+              evals/ lives inside skills/, so it stays within the portable subset.
+              When you are extending an existing skill rather than adding one, append the new
+              scenarios to its evals.json and keep every eval already there: they are the bar that
+              skill already clears, and an extension that breaks them is a regression.
             - Run `node packages/cli/bin/agent-hub.js build` and commit the generated manifests, then
               `node packages/cli/bin/agent-hub.js validate` and fix anything it reports.
-            - Self-evaluate: for each scenario in the request, walk the SKILL.md and state whether it
-              produces the expected result. Revise the skill until every scenario passes, then put that
-              evaluation in the PR body under "Self-evaluation".
             - Never push to main. Open a pull request from a branch named skill/<kebab-name>, titled
               "Add <name> (requested in #${{ github.event.issue.number }})", with "Closes #${{ github.event.issue.number }}"
-              in the body. Request review from BOTH the requester (@${{ github.event.issue.user.login }})
+              in the body. Leave the branch checked out when you finish — later steps commit the eval
+              refinements on top of it and append the grading table to the pull request body.
+              Request review from BOTH the requester (@${{ github.event.issue.user.login }})
               for functional sign-off and the platform reviewers (${{ needs.config.outputs.reviewers }})
               for quality and security, using:
               gh pr edit <number> --add-reviewer "${{ github.event.issue.user.login }},${{ needs.config.outputs.reviewers }}"
-          claude_args: --allowed-tools "Bash,Read,Write,Edit,Glob,Grep"
+
+      # Read what the run did from its commits rather than from a directory
+      # listing: a request that matches an existing skill is answered by
+      # extending that skill, and an extension adds no directory to compare.
+      - name: Find what the run produced
+        id: generated
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          touched=$(git diff --name-only "$BASE_SHA"..HEAD -- plugins/ | cut -d/ -f2 | sort -u)
+          if [ -z "$touched" ]; then
+            echo "::error::the generation run changed no plugin under plugins/"
+            exit 1
+          fi
+          if [ "$(echo "$touched" | wc -l)" -ne 1 ]; then
+            echo "::error::one request touches one plugin, but the run changed: $(echo "$touched" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "dir=$touched" >> "$GITHUB_OUTPUT"
+
+          # The later steps push to whatever branch the run left checked out,
+          # which is skill/<name> for a new plugin and skill/<name>-extended for
+          # an extension — so ask git rather than assuming either shape.
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$branch" = "HEAD" ] || [ "$branch" = "${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::the run left the checkout on '$branch'; it was asked to work on a skill branch"
+            exit 1
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+          # The evals have to exist and be well formed before the rounds can run
+          # them; a missing file here is a generation bug, not an eval failure.
+          status=0
+          for skill in plugins/"$touched"/skills/*/; do
+            if [ ! -d "$skill" ]; then
+              echo "::error::plugins/${touched} has no skills/"
+              status=1
+              continue
+            fi
+            evals="${skill}evals/evals.json"
+            if [ ! -f "$evals" ]; then
+              echo "::error::${skill} has no evals/evals.json"
+              status=1
+              continue
+            fi
+            jq -e '.skill_name and (.evals | length > 0) and all(.evals[];
+              .prompt and .expected_output and (.expectations | length > 0))' "$evals" > /dev/null || {
+              echo "::error file=${evals}::every eval needs a prompt, an expected_output and at least one expectation"
+              status=1
+            }
+          done
+          exit $status
+
+      # Run, grade, refine — and go round again while anything still fails. Each
+      # round re-runs every eval against the revised skill, so a fix that breaks
+      # an eval that used to pass cannot slip through on the strength of the one
+      # it repaired.
+      - name: Eval round 1
+        id: round1
+        uses: ./.github/actions/skill-eval-round
+        with:
+          api-key: ${{ secrets.AGENT_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          base-url: ${{ needs.config.outputs.engine-base-url }}
+          model: ${{ needs.config.outputs.engine-model }}
+          subagent-model: ${{ needs.config.outputs.engine-subagent-model }}
+          plugin-dir: ${{ steps.generated.outputs.dir }}
+          round: "1"
+          workspace: ${{ runner.temp }}/skill-eval
+
+      - name: Eval round 2
+        id: round2
+        if: success() && steps.round1.outputs.passed != 'true'
+        uses: ./.github/actions/skill-eval-round
+        with:
+          api-key: ${{ secrets.AGENT_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          base-url: ${{ needs.config.outputs.engine-base-url }}
+          model: ${{ needs.config.outputs.engine-model }}
+          subagent-model: ${{ needs.config.outputs.engine-subagent-model }}
+          plugin-dir: ${{ steps.generated.outputs.dir }}
+          round: "2"
+          workspace: ${{ runner.temp }}/skill-eval
+
+      - name: Eval round 3
+        id: round3
+        if: success() && steps.round1.outputs.passed != 'true' && steps.round2.outputs.passed != 'true'
+        uses: ./.github/actions/skill-eval-round
+        with:
+          api-key: ${{ secrets.AGENT_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          base-url: ${{ needs.config.outputs.engine-base-url }}
+          model: ${{ needs.config.outputs.engine-model }}
+          subagent-model: ${{ needs.config.outputs.engine-subagent-model }}
+          plugin-dir: ${{ steps.generated.outputs.dir }}
+          round: "3"
+          workspace: ${{ runner.temp }}/skill-eval
+
+      # The reviewers see the grades whether or not they are green: a skill that
+      # never passed is still worth looking at, and hiding the failures would
+      # leave the requester guessing why nothing landed.
+      - name: Publish the eval results
+        if: always() && steps.generated.outputs.dir != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.generated.outputs.branch }}
+          ENGINE: ${{ needs.config.outputs.engine-id }}
+          ENGINE_MODEL: ${{ needs.config.outputs.engine-model }}
+          R1: ${{ steps.round1.outputs.passed }}
+          R2: ${{ steps.round2.outputs.passed }}
+          R3: ${{ steps.round3.outputs.passed }}
+        run: |
+          workspace="$RUNNER_TEMP/skill-eval"
+          passed=""
+          for r in "$R3" "$R2" "$R1"; do
+            if [ -n "$r" ]; then passed="$r"; break; fi
+          done
+
+          report="$RUNNER_TEMP/eval-results.md"
+          {
+            echo "## Eval results"
+            echo
+            echo "Drafted and evaluated by \`$ENGINE${ENGINE_MODEL:+ / $ENGINE_MODEL}\`."
+            echo
+            if [ -z "$passed" ]; then
+              echo "The eval rounds did not run to completion — see the run log."
+            elif [ "$passed" = "true" ]; then
+              echo "Every expectation passed. Rounds below, oldest first."
+            else
+              echo "**The skill still fails expectations after every round.** Rounds below, oldest first."
+            fi
+            for round in 1 2 3; do
+              [ -f "$workspace/round-$round/report.md" ] || continue
+              echo
+              cat "$workspace/round-$round/report.md"
+            done
+            echo
+            echo "Runs and grades are attached to the workflow run as the \`skill-evals\` artifact."
+          } > "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+          # The rounds commit locally; one push here puts every refinement on the
+          # pull request the generation step opened.
+          if git rev-parse --verify HEAD > /dev/null 2>&1; then
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          number=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || true)
+          if [ -n "$number" ]; then
+            gh pr view "$number" --json body --jq .body > "$RUNNER_TEMP/pr-body.md"
+            # Drop any previous results section so re-runs replace rather than stack.
+            awk '/^## Eval results$/{exit} {print}' "$RUNNER_TEMP/pr-body.md" > "$RUNNER_TEMP/pr-body-new.md"
+            printf '\n' >> "$RUNNER_TEMP/pr-body-new.md"
+            cat "$report" >> "$RUNNER_TEMP/pr-body-new.md"
+            gh pr edit "$number" --body-file "$RUNNER_TEMP/pr-body-new.md"
+          fi
+
+          if [ -z "$passed" ]; then
+            echo "::error::the eval rounds did not complete, so nothing was graded"
+            exit 1
+          fi
+          if [ "$passed" != "true" ]; then
+            echo "::error::the skill still fails its expectations after every round; the pull request carries the grades"
+            exit 1
+          fi
+
+      - name: Keep the eval runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-evals
+          path: ${{ runner.temp }}/skill-eval
+          if-no-files-found: ignore
 
       - name: Tell the requester
         if: always()

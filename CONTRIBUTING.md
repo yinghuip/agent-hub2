@@ -8,7 +8,9 @@ plugins/<plugin-name>/
 ├── README.md                   ← rendered on the catalog listing
 ├── mcp.json                    ← optional MCP server config
 └── skills/
-    └── <skill-name>/SKILL.md
+    └── <skill-name>/
+        ├── SKILL.md
+        └── evals/evals.json     ← the scenarios the skill has to satisfy
 ```
 
 `plugin.yaml` is canonical. CI generates both tool manifests
@@ -41,6 +43,14 @@ and the generated `plugin.json` / `.claude-plugin/`. Anything else fails
 `portable-subset`.
 That rule is what makes "works in all three tools" literally true; without it a
 Copilot user can install something their tool silently ignores.
+
+Only the top level is restricted, so a skill may carry anything it needs beside
+its `SKILL.md`. Use that for `evals/evals.json` in
+[skill-creator's schema](https://github.com/anthropics/claude-plugins-official/blob/main/plugins/skill-creator/skills/skill-creator/SKILL.md):
+the prompts and expectations the skill is meant to satisfy, so a reviewer can
+re-run them instead of taking the author's word for it. Generated plugins get
+this written for them from the request's scenarios; hand-authored ones should
+carry it too.
 
 Each `SKILL.md` needs frontmatter whose `name` matches its directory:
 

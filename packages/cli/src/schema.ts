@@ -47,6 +47,24 @@ export const configSchema = z
      * higher than ~0.5 catches only near-identical wording.
      */
     similarityFloor: z.number().min(0).max(1).default(0.3),
+    /**
+     * Which agent drafts and evaluates generated skills. Claude Code talks to
+     * any Anthropic-compatible endpoint, so `baseUrl` is what makes the model a
+     * configuration choice rather than a rewrite of the workflow; leave it out
+     * to use Anthropic's own API. The key itself is never here — it is the
+     * AGENT_API_KEY repository secret.
+     */
+    engine: z
+      .object({
+        /** Human label for the provider; it lands in the pull request body. */
+        id: z.string().min(1),
+        baseUrl: z.string().url().optional(),
+        model: z.string().min(1).optional(),
+        /** Model for the eval subagents, which are many and short. */
+        subagentModel: z.string().min(1).optional(),
+      })
+      .strict()
+      .default({ id: "anthropic" }),
     /** GitHub logins/teams added as required reviewers on generated PRs. */
     platformReviewers: z.array(z.string().min(1)).default([]),
   })
