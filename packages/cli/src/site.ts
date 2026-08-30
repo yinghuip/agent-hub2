@@ -40,6 +40,9 @@ function layout(config: HubConfig, title: string, body: string, depth: number, c
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
 <meta name="description" content="${escape(config.description)}">
+<meta property="og:title" content="${escape(title)}">
+<meta property="og:description" content="${escape(config.description)}">
+<meta property="og:type" content="website">
 <link rel="icon" href="${favicon(config)}">
 <link rel="preload" as="font" type="font/woff2" href="${base}/fonts/archivo-narrow.woff2" crossorigin>
 <link rel="stylesheet" href="${base}/styles.css">
@@ -48,7 +51,7 @@ function layout(config: HubConfig, title: string, body: string, depth: number, c
 <a class="skip" href="#main">Skip to content</a>
 <header class="site">
   <a class="brand" href="${base}/index.html">${escape(config.displayName)}</a>
-  <nav class="utility">
+  <nav class="utility" aria-label="Site">
     ${item("contribute", `${base}/contribute.html`, "Contribute")}
     ${item("request", `${base}/request.html`, "Request a skill")}
     ${item("requests", `${base}/requests.html`, "Open requests")}
@@ -79,7 +82,11 @@ function tile(plugin: CatalogPlugin, index: number): string {
     .toLowerCase();
   return `<article class="tile${index === 0 ? " tile-wide" : ""}" data-name="${escape(plugin.name)}"
   data-roles="${escape(plugin.roles.join("|"))}" data-search="${escape(search)}">
-  <h3><a href="./plugins/${escape(plugin.name)}.html">${escape(plugin.name)}</a></h3>
+  <h3><a href="./plugins/${escape(plugin.name)}.html"${
+    // Search also matches keywords the card does not print; the tooltip lets a
+    // reader see why a tile matched without opening it.
+    plugin.keywords.length ? ` title="Keywords: ${escape(plugin.keywords.join(", "))}"` : ""
+  }>${escape(plugin.name)}</a></h3>
   <p class="tile-roles">${escape(plugin.roles.join(" · "))}</p>
   <p class="desc">${escape(plugin.description)}</p>
   <dl class="strip">
@@ -136,10 +143,11 @@ function homePage(analysis: Analysis, config: HubConfig): string {
     <a href="#catalog"><span class="count">${plugins.length}</span><span class="count-label">Skills</span></a>
     <a href="#catalog"><span class="count">${populatedRoles.length}</span><span class="count-label">Roles</span></a>
     ${
-      // Absent when the queue was not read: a missing number is honest, a 0 is a lie.
+      // Absent when the queue was not read: a missing number is honest, a 0 is
+      // a lie. The tool count stands in so the instrument always reads three.
       requests
         ? `<a href="./requests.html"><span class="count">${requests.length}</span><span class="count-label">Open requests</span></a>`
-        : ""
+        : `<a href="#install"><span class="count">3</span><span class="count-label">Tools</span></a>`
     }
   </aside>
 </section>
@@ -160,12 +168,13 @@ ${
   <div class="catalog-body">
     <h2>Catalog</h2>
     <p id="result-count" class="visually-hidden" role="status" aria-live="polite"></p>
-    <p id="no-results" role="status" hidden>No skills match that search.</p>
+    <p id="no-results" role="status" hidden>No skills match that search.
+      <button type="button" id="clear-search" class="ghost">Clear search and filter</button></p>
     ${catalogGrid}
   </div>
 </section>
 
-<section class="band invert">
+<section class="band invert" id="install">
   <div class="well">
     <h2>Install the marketplace once</h2>
     <div class="band-code">
@@ -267,6 +276,12 @@ ${
 
   input.addEventListener("input", apply);
   select.addEventListener("change", function () { setRole(select.value); });
+  // The empty state is a fork, not a wall: one press restores the full sheet.
+  document.getElementById("clear-search").addEventListener("click", function () {
+    input.value = "";
+    setRole("");
+    input.focus();
+  });
   buttons.forEach(function (button) {
     button.addEventListener("click", function () { setRole(button.getAttribute("data-role-filter")); });
   });
@@ -933,6 +948,8 @@ const STYLES = `@font-face {
 }
 
 * { box-sizing: border-box; }
+/* The hero counts jump to in-page anchors; the glide says "same page". */
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 /* The footer belongs at the bottom of the viewport even when the page is
    short: a footer floating mid-screen over bare ground reads as a broken page. */
 body {

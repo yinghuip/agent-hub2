@@ -231,6 +231,18 @@ Deliberately unchanged: the rail keeps its dark surface in both modes (it is
 the reference's signature structure), and tile titles stay uppercase (the
 display treatment is the voice of the whole site).
 
+The last refinement pass: the hero instrument always reads three blocks — the
+open-request count when the build read the queue, the tool count (the three
+tools the lede names, linking to the install band) when it did not — so the
+composition never depends on which build you are looking at. The catalog's
+empty state carries a "Clear search and filter" action instead of being a
+wall. Tile title tooltips list the keywords search also matches, so a match on
+invisible text is explicable. Pages carry og: metadata for link unfurls, the
+utility nav is labelled for assistive tech, and in-page anchor jumps glide
+under prefers-reduced-motion: no-preference only. Accepted as-is with
+rationale: white count labels on the accent fill measure 4.64:1 — AA with
+little margin, monitored, not a failure.
+
 Breakpoints stay `sm 640 / md 768 / lg 1024 / xl 1280 / 2xl 1536`.
 
 ## 7. Page compositions
