@@ -36,13 +36,16 @@ One-time settings the pipeline assumes but cannot apply itself:
 gh label create skill-request --description "A request for a new agent skill" --color 0E8A16
 gh label create needs-triage --description "Maintainer needs to evaluate this issue" --color FBCA04
 gh label create possible-duplicate --description "An existing skill or open request may already cover this" --color C5DEF5
+gh label create approved-for-generation --description "Approved: an agent may draft this skill" --color 5319E7
 ```
 
 Requests carry the first two labels, applied by the issue template, which can
 only apply labels that already exist — an unlabelled request never reaches
 triage. The third is applied by the duplicate check below; create it up front so
 it has a description and a colour, and so triage can filter on it before the
-first one lands.
+first one lands. The fourth is `approvalLabel` in `agent-hub.config.json`:
+applying it starts generation, and it is also what sorts a request into
+**Approved and generating** on the catalog's queue page.
 
 Generation also needs a key for whichever model you run it on, in one secret:
 
@@ -79,6 +82,10 @@ The catalog is a GitHub Pages site. Set **Settings → Pages → Visibility** to
 there is no other auth layer because there is no backend. The publish workflow
 does not change this setting — it is a one-time repo configuration.
 
+This matters more than it used to. The catalog now republishes the open request
+queue, which is text colleagues wrote in issues rather than anything that has
+been through code review, so whoever can reach the site can read it.
+
 ## Request a skill
 
 Use **Request a skill** on the catalog site, or open the
@@ -110,10 +117,31 @@ against every published skill — as you type it, and again when you submit — 
 shows you the closest matches with the commands that install them. It never
 blocks: if none of them fit, the button becomes **Continue anyway**.
 
-The page ranks against the catalog only. Open requests are not in the catalog and
-the page has no credential to read them, so it links to the open queue rather
-than implying the list is complete. The check that *does* see open requests runs
-where a token exists: on the issue.
+The page ranks against the catalog only — an open request is not a published
+skill — so rather than implying the list is complete it links to the queue page
+below. The check that *does* rank against open requests runs where a token
+exists: on the issue.
+
+### The open request queue
+
+`requests.html` lists every open `skill-request` issue, grouped by the stage its
+labels put it in — **Needs triage**, **Approved and generating**, **Possible
+duplicate** — with a count and the newest few also banded onto the home page.
+Approval wins over duplicate: the approval label is a decision a maintainer took
+after triage, and sending a reader to add scenarios to a request already being
+drafted would be worse than saying nothing. Nothing is stored; the labels are
+the state, read afresh on every build.
+
+It is a snapshot, and it says so, carrying its build date and a link to the live
+GitHub search. `pages.yml` republishes on issue events, so it is usually seconds
+behind rather than minutes.
+
+The queue reaches the build as a file, never an HTTP call — `pages.yml` fetches
+it with the token it already has and passes the path to `--issues`. So a local
+`npm run build` has no queue, and the page says *that* rather than claiming
+nobody has asked for anything. In `index.json`, `requests` is `null` when the
+build did not read the queue and `[]` when it read an empty one; those are
+different facts and the site keeps them apart.
 
 Every request is checked again once it is an issue — including ones filed on
 GitHub directly, and again whenever one is edited. `check-duplicate.yml` shortlists
@@ -176,6 +204,7 @@ commit the generated manifests.
 npm ci
 npm test                                        # the build pipeline's test suite
 node packages/cli/bin/agent-hub.js build        # manifests, marketplace files, catalog site
+node packages/cli/bin/agent-hub.js build --issues open.json   # …and the open request queue
 node packages/cli/bin/agent-hub.js validate     # the CI gate
 ```
 

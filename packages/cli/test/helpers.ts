@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, writeFile, utimes, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { renderRequestIssue, type OpenIssue } from "../src/index.ts";
 
 export type Tree = Record<string, string>;
 
@@ -75,5 +76,34 @@ export function validTree(extra: Tree = {}): Tree {
     "plugins/pr-review/README.md": "# PR Review\n\nA **checklist** driven review skill.\n",
     "plugins/pr-review/skills/review-pr/SKILL.md": SKILL_MD,
     ...extra,
+  };
+}
+
+/**
+ * One issue as GitHub's list endpoint returns it. The body is built by
+ * `renderRequestIssue`, so a fixture cannot drift from what the issue form
+ * actually writes — the same trick the round-trip test in request.test.ts uses.
+ * Pass `body` explicitly for a hand-edited request that never saw the form.
+ */
+export function openIssue(overrides: Partial<OpenIssue> & { problem?: string; roles?: string[] } = {}): OpenIssue {
+  const { problem, roles, ...rest } = overrides;
+  const number = rest.number ?? 1;
+  const title = rest.title ?? `Skill request: Request ${number}`;
+  const body =
+    rest.body ??
+    renderRequestIssue({
+      title: title.replace(/^Skill request:\s*/i, ""),
+      roles: roles ?? ["Developer"],
+      problem: problem ?? "Something goes wrong today.",
+      scenarios: "Scenario: it happens\nExpected: the skill catches it",
+    }).body;
+  return {
+    number,
+    title,
+    body,
+    html_url: `https://github.com/acme/agent-hub/issues/${number}`,
+    labels: [{ name: "skill-request" }, { name: "needs-triage" }],
+    created_at: "2025-05-20T09:00:00Z",
+    ...rest,
   };
 }

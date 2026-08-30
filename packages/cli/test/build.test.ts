@@ -2,7 +2,7 @@ import { readFile, readdir, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { build, rankSimilar } from "../src/index.ts";
-import { CONFIG, codeownersFor, pluginYaml, read, readJson, validTree, writeTree } from "./helpers.ts";
+import { CONFIG, codeownersFor, openIssue, pluginYaml, read, readJson, validTree, writeTree } from "./helpers.ts";
 
 const NOW = new Date("2025-06-01T00:00:00Z");
 const days = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
@@ -313,7 +313,7 @@ describe("contribute page", () => {
     expect(await read(root, "dist/site/styles.css")).toContain(
       ".detail { max-width: 68rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) var(--gutter); }",
     );
-    for (const file of ["request.html", "contribute.html", "plugins/pr-review.html"]) {
+    for (const file of ["request.html", "requests.html", "contribute.html", "plugins/pr-review.html"]) {
       expect(await read(root, `dist/site/${file}`)).toContain('<article class="detail">');
     }
   });
@@ -322,9 +322,174 @@ describe("contribute page", () => {
     const root = await writeTree(validTree({ "CONTRIBUTING.md": "# Guide\n\nText.\n" }));
     await build({ root, now: NOW });
 
-    for (const file of ["index.html", "request.html", "contribute.html", "plugins/pr-review.html"]) {
+    for (const file of ["index.html", "request.html", "requests.html", "contribute.html", "plugins/pr-review.html"]) {
       expect(await read(root, `dist/site/${file}`)).toContain("contribute.html");
     }
+  });
+});
+
+describe("open requests", () => {
+  const label = (name: string) => ({ name });
+  const APPROVED = [label("skill-request"), label("approved-for-generation")];
+  const DUPLICATE = [label("skill-request"), label("possible-duplicate")];
+
+  // The guard on the whole feature: a build with no token cannot tell an empty
+  // queue from an unread one, so it must say which it is looking at.
+  it("says the queue was not read rather than showing an empty one", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW });
+    const page = await read(root, "dist/site/requests.html");
+    const home = await read(root, "dist/site/index.html");
+
+    expect(page).toContain("This build did not read the request queue");
+    expect(page).not.toContain("No open requests right now");
+    expect(page).not.toContain('<section class="stage">');
+    // Nothing was read, so there is no snapshot to date — and the live queue is
+    // offered once, in the paragraph that explains why the list is missing.
+    expect(page).not.toContain("A snapshot, built");
+    expect(page.match(/the open issues on GitHub/g)).toHaveLength(1);
+    expect((await readJson(root, "dist/site/index.json")).requests).toBeNull();
+    // A missing number is honest; a zero would be a lie.
+    expect(home).not.toContain("Open requests");
+    expect(home).not.toContain("Requests in flight");
+  });
+
+  it("shows a queue it read and found empty as empty", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW, issues: [] });
+    const page = await read(root, "dist/site/requests.html");
+    const home = await read(root, "dist/site/index.html");
+
+    expect(page).toContain("No open requests right now");
+    expect(page).not.toContain("This build did not read the request queue");
+    expect((await readJson(root, "dist/site/index.json")).requests).toEqual([]);
+    // The counts block is a fixed instrument, so zero is reportable; a content
+    // section with nothing in it is a stub, so the band stays away.
+    expect(home).toContain("Open requests");
+    expect(home).not.toContain("Requests in flight");
+  });
+
+  it("groups open requests under the stage their labels put them in", async () => {
+    const root = await writeTree(validTree());
+    await build({
+      root,
+      now: NOW,
+      issues: [
+        openIssue({ number: 41, title: "Skill request: Flaky-test triage" }),
+        openIssue({ number: 38, title: "Skill request: Terraform plan review", labels: APPROVED }),
+        openIssue({ number: 44, title: "Skill request: PR size checker", labels: DUPLICATE }),
+      ],
+    });
+    const page = await read(root, "dist/site/requests.html");
+
+    for (const heading of ["Needs triage", "Approved and generating", "Possible duplicate"]) {
+      expect(page).toContain(heading);
+    }
+    // Each title sits under its own heading, and triage — the only stage waiting
+    // on a human — comes first.
+    expect(page.indexOf("Needs triage")).toBeLessThan(page.indexOf("Flaky-test triage"));
+    expect(page.indexOf("Flaky-test triage")).toBeLessThan(page.indexOf("Approved and generating"));
+    expect(page.indexOf("Approved and generating")).toBeLessThan(page.indexOf("Terraform plan review"));
+    expect(page.indexOf("Terraform plan review")).toBeLessThan(page.indexOf("Possible duplicate"));
+    expect(page.indexOf("Possible duplicate")).toBeLessThan(page.indexOf("PR size checker"));
+  });
+
+  it("omits a stage nothing is in", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW, issues: [openIssue({ number: 41 })] });
+    const page = await read(root, "dist/site/requests.html");
+
+    expect(page).toContain("Needs triage");
+    expect(page).not.toContain("Approved and generating");
+    expect(page).not.toContain("Possible duplicate");
+  });
+
+  it("keeps a hand-edited request in the list on its raw body, claiming no roles", async () => {
+    const root = await writeTree(validTree());
+    await build({
+      root,
+      now: NOW,
+      issues: [openIssue({ number: 45, title: "Terraform review", body: "Typed into GitHub with no headings." })],
+    });
+    const page = await read(root, "dist/site/requests.html");
+
+    expect(page).toContain("Terraform review");
+    expect(page).toContain("Typed into GitHub with no headings.");
+    expect(page).not.toContain('class="request-roles"');
+  });
+
+  // Issue bodies are the first thing this site republishes that has not been
+  // through code review. Anyone who can open an issue could otherwise script
+  // an internal page.
+  it("escapes issue text so a request cannot inject markup", async () => {
+    const root = await writeTree(validTree());
+    await build({
+      root,
+      now: NOW,
+      issues: [
+        openIssue({
+          number: 50,
+          title: "Skill request: <img src=x onerror=alert(1)>",
+          body: "### What problem should this skill solve?\n\nEnds it early: </script><script>alert(2)</script>\n",
+        }),
+      ],
+    });
+    const page = await read(root, "dist/site/requests.html");
+    const home = await read(root, "dist/site/index.html");
+
+    expect(page).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(page).not.toContain("<img src=x");
+    expect(page).not.toContain("</script><script>alert(2)");
+
+    // On the home page the same text also lands inside <script id="catalog">,
+    // where escaping \u003c is what stops it closing the element.
+    expect(home).not.toContain("<img src=x");
+    expect(home).not.toContain("</script><script>alert(2)");
+    expect(home).toContain("\\u003cimg src=x");
+  });
+
+  it("drops pull requests, which the issues endpoint returns alongside issues", async () => {
+    const root = await writeTree(validTree());
+    await build({
+      root,
+      now: NOW,
+      issues: [
+        openIssue({ number: 8, title: "Skill request: A real request" }),
+        openIssue({ number: 9, title: "A pull request", pull_request: { url: "…" } }),
+      ],
+    });
+
+    expect(await read(root, "dist/site/requests.html")).not.toContain("A pull request");
+    expect((await readJson(root, "dist/site/index.json")).requests).toHaveLength(1);
+  });
+
+  it("counts open requests in the hero and bands them on the home page", async () => {
+    const root = await writeTree(validTree());
+    await build({
+      root,
+      now: NOW,
+      issues: [
+        openIssue({ number: 41, title: "Skill request: Flaky-test triage" }),
+        openIssue({ number: 38, title: "Skill request: Terraform plan review", labels: APPROVED }),
+      ],
+    });
+    const home = await read(root, "dist/site/index.html");
+
+    expect(home).toContain('<span class="count">2</span><span class="count-label">Open requests</span>');
+    expect(home).toContain("Requests in flight");
+    expect(home).toContain("Flaky-test triage");
+    expect(home).toContain('<span class="chip">generating</span>');
+    expect(home).toContain('href="./requests.html"');
+  });
+
+  // A snapshot that does not say it is one invites a reader to trust it.
+  it("dates the snapshot and always offers the live queue", async () => {
+    const root = await writeTree(validTree());
+    await build({ root, now: NOW, issues: [openIssue({ number: 41 })] });
+    const page = await read(root, "dist/site/requests.html");
+
+    expect(page).toContain("2025-06-01");
+    expect(page).toContain("label%3Askill-request");
   });
 });
 
@@ -418,15 +583,16 @@ describe("request page", () => {
     expect(page).toContain("Continue anyway");
   });
 
-  // Open requests are not in the catalog, and with no token the page cannot read
-  // them, so it must point at them rather than imply the list is complete.
-  it("points at open requests it cannot read instead of ignoring them", async () => {
+  // The ranker on this page still sees published skills only, so it must not
+  // imply the list is complete. The queue now has a page of its own to send
+  // people to, which is the only thing that changed.
+  it("points the request form at the catalog's own queue page", async () => {
     const root = await writeTree(validTree());
     await build({ root, now: NOW });
     const page = await read(root, "dist/site/request.html");
 
     expect(page).toContain("OPEN_REQUESTS");
-    expect(page).toContain("label%3Askill-request");
+    expect(page).toContain("./requests.html");
     expect(page).toContain("Requests still waiting on triage are not in this list.");
   });
 

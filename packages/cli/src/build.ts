@@ -21,6 +21,9 @@ async function writeFiles(root: string, files: Map<string, string>): Promise<str
  * Turn the plugins tree into every generated artifact: both per-plugin
  * manifests, both marketplace files, and the catalog site. Emits nothing when
  * the tree does not validate.
+ *
+ * `options.issues` is the open request queue when the caller fetched one; the
+ * build itself makes no network call.
  */
 export async function build(options: AnalyseOptions): Promise<BuildResult> {
   const analysis = await analyse(options);

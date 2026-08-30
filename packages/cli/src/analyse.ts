@@ -2,9 +2,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { marked } from "marked";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { queuedRequests, type QueuedRequest } from "./queue.ts";
 import { loadPlugins, timestampsFor } from "./repo.ts";
 import { checkPlugin, parseMetadata } from "./rules.ts";
 import { configSchema, zodErrors, type HubConfig } from "./schema.ts";
+// Type-only, so the cycle with similar.ts (which needs CatalogPlugin) is erased.
+import type { OpenIssue } from "./similar.ts";
 import type { PluginMetadata, ValidationError } from "./types.ts";
 
 export type CatalogSkill = { name: string; description: string };
@@ -25,13 +28,24 @@ export type Analysis = {
   recentlyAdded: string[];
   /** The repo's contributor guide, rendered, when it has one. */
   contributingHtml: string | null;
+  /**
+   * The open request queue, or null when this build did not read it. Never []
+   * for "unknown": a local build has no token and must not publish a page
+   * claiming nobody has asked for anything.
+   */
+  requests: QueuedRequest[] | null;
   errors: ValidationError[];
   now: Date;
 };
 
-export type AnalyseOptions = { root: string; now?: Date };
+export type AnalyseOptions = {
+  root: string;
+  now?: Date;
+  /** The queue, fetched by the caller. The CLI never reaches the network. */
+  issues?: OpenIssue[] | null;
+};
 
-export async function analyse({ root, now = new Date() }: AnalyseOptions): Promise<Analysis> {
+export async function analyse({ root, now = new Date(), issues = null }: AnalyseOptions): Promise<Analysis> {
   const errors: ValidationError[] = [];
   const config = await loadConfig(root, errors);
   const raw = await loadPlugins(root);
@@ -74,7 +88,11 @@ export async function analyse({ root, now = new Date() }: AnalyseOptions): Promi
         .map((p) => p.name)
     : [];
 
-  return { config, plugins, recentlyAdded, contributingHtml, errors, now };
+  // Stages need `approvalLabel` and the URL fallback needs `repo`, so without a
+  // config there is no queue to speak of — and `build` bails on that error anyway.
+  const requests = config && issues ? queuedRequests(issues, config) : null;
+
+  return { config, plugins, recentlyAdded, contributingHtml, requests, errors, now };
 }
 
 /**

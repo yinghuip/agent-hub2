@@ -16,7 +16,10 @@ import type { ValidationError } from "./types.ts";
 const USAGE = `agent-hub — build and validate the skills marketplace
 
 Usage:
-  agent-hub build [--root <dir>]      Generate manifests, marketplace files and the catalog site
+  agent-hub build [--root <dir>] [--issues <path>]
+                                      Generate manifests, marketplace files and the catalog site.
+                                      --issues takes the JSON the GitHub issues endpoint returns,
+                                      so the catalog can list the open request queue
   agent-hub validate [--root <dir>]   Run the CI gate: every rule, plus a manifest drift check
   agent-hub parse-request [--file <path>]
                                       Parse a skill-request issue body into JSON on stdout
@@ -40,6 +43,23 @@ function flag(argv: string[], name: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+/**
+ * The open queue, as the caller fetched it. Null means nobody read it, and a
+ * failed read stays null rather than becoming an empty queue — the catalog is
+ * the part that must work, but it must not claim nobody has asked for anything.
+ */
+async function readIssues(path: string | undefined): Promise<OpenIssue[] | null> {
+  if (!path) return null;
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    if (Array.isArray(parsed)) return parsed;
+    console.error(`Open requests in ${path} are not a JSON array — ignoring them.`);
+  } catch (error) {
+    console.error(`Could not read open requests from ${path}: ${(error as Error).message}`);
+  }
+  return null;
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
@@ -51,7 +71,7 @@ export async function main(argv: string[]): Promise<number> {
   const root = flag(argv, "root") ?? process.cwd();
 
   if (command === "build") {
-    const result = await build({ root });
+    const result = await build({ root, issues: await readIssues(flag(argv, "issues")) });
     if (!result.ok) {
       console.error("Build failed — nothing was written.\n");
       report(result.errors);
@@ -134,17 +154,9 @@ async function findSimilarCommand(argv: string[], root: string): Promise<number>
     return 1;
   }
 
-  const issuesFile = flag(argv, "issues");
-  let issues: OpenIssue[] = [];
-  if (issuesFile) {
-    try {
-      const parsed = JSON.parse(await readFile(issuesFile, "utf8"));
-      issues = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      // The queue is a nice-to-have; the catalog is the part that must work.
-      console.error(`Could not read open requests from ${issuesFile}: ${(error as Error).message}`);
-    }
-  }
+  // Here the queue is a nice-to-have: without it the check just has fewer
+  // candidates, so an unreadable file costs nothing and says so.
+  const issues = (await readIssues(flag(argv, "issues"))) ?? [];
 
   const exclude = flag(argv, "exclude");
   const matches = findSimilar({
