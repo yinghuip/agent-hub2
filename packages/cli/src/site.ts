@@ -478,7 +478,7 @@ function openRequestsPage(analysis: Analysis, config: HubConfig): string {
   if (requests === null) {
     main = `<p>This build did not read the request queue, so there is nothing to list here. The catalog is
   generated without a token; the published site fetches the queue in its workflow.</p>
-  <p>Browse ${live} instead — that is the live list either way.</p>`;
+  <p>Browse ${live} instead. That is the live list either way.</p>`;
   } else if (requests.length === 0) {
     main = `<p>No open requests right now. Every request that has been asked for has either shipped as a skill
   or been closed.</p>
@@ -498,7 +498,7 @@ function openRequestsPage(analysis: Analysis, config: HubConfig): string {
       .filter(Boolean)
       .join("\n");
     main = `<p>${requests.length === 1 ? "One request is" : `${requests.length} requests are`} open. Adding your
-  scenarios to one that already exists beats filing a second — the generating agent turns every
+  scenarios to one that already exists beats filing a second: the generating agent turns every
   <code>Scenario:</code>/<code>Expected:</code> pair into an eval.</p>
 ${sections}`;
   }
@@ -528,7 +528,7 @@ function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number)
   const body = `<article class="detail">
 <h1>Request a skill</h1>
 <p class="lede">Describe what you need in plain language. This page checks your answers, then hands them to
-GitHub's own request form, so the issue opens under <strong>your own</strong> account — no token to create,
+GitHub's own request form, so the issue opens under <strong>your own</strong> account: no token to create,
 and you stay reachable for questions and get notified when the skill ships.</p>
 
 <form id="request">
@@ -607,7 +607,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     if (matches.length === 0) { similar.hidden = true; similar.innerHTML = ""; return; }
     var match = matches[0];
     show('<p class="similar-lead">This may already exist</p>' +
-      '<p><a href="' + esc(match.url) + '">' + esc(match.name) + "</a> — " + esc(match.description) + "</p>" +
+      '<p><a href="' + esc(match.url) + '">' + esc(match.name) + "</a>: " + esc(match.description) + "</p>" +
       "<pre>" + esc(match.install.claudeCode) + "</pre>" +
       '<p class="hint"><a href="' + esc(match.url) + '">Read what it does</a> before writing this one out.</p>');
   }
@@ -623,7 +623,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
 
   function interstitial(matches) {
     var items = matches.map(function (match) {
-      return "<li><a href=\\"" + esc(match.url) + "\\">" + esc(match.name) + "</a> — " + esc(match.description) +
+      return "<li><a href=\\"" + esc(match.url) + "\\">" + esc(match.name) + "</a>: " + esc(match.description) +
         "<pre>" + esc(match.install.claudeCode) + "</pre></li>";
     });
     show('<p class="similar-lead">Some of this may already exist</p><ul>' + items.join("") + "</ul>" +
@@ -680,8 +680,8 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
    * everything else in the link and put that one on the clipboard.
    */
   function handOverLongScenarios(answer) {
-    var paste = "Your scenarios were too long to carry in the link, so they are on your clipboard — " +
-      "paste them into \\"Example scenarios and expected results\\" on GitHub.";
+    var paste = "Your scenarios were too long to carry in the link, so they are on your clipboard. " +
+      "Paste them into \\"Example scenarios and expected results\\" on GitHub.";
     var manual = "Your scenarios were too long to carry in the link, and this browser would not let the " +
       "page copy them. Copy the scenarios box above yourself and paste it into that field on GitHub.";
     var copied = null;
@@ -702,7 +702,7 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     var url = issueUrl(answer, null);
     if (url.length > URL_BUDGET) { handOverLongScenarios(answer); return; }
     window.open(url, "_blank", "noopener");
-    say("Opened on GitHub in a new tab — check it over and press Create. Your answers are still here.");
+    say("Opened on GitHub in a new tab. Check it over and press Create. Your answers are still here.");
   }
 
   form.addEventListener("submit", function (event) {

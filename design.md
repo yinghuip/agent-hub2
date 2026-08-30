@@ -208,7 +208,9 @@ the requests band below carries none.
 
 1. **Hero, asymmetric split.** Left: eyebrow, headline (2 lines max), subtext
    (20 words max), search field. Right: a red block carrying the live counts
-   (plugin total, role count, most recent addition) in display type. Four text
+   (plugin total and role count) in display type. A "newest" date tile shipped
+   here originally and was removed: a date is not a count, and it made the block
+   read as a changelog. Four text
    elements, nothing below the CTA, no trust strip, no scroll cue, top padding
    capped at `pt-24`.
 2. **Recently added, horizontal scroll-snap row.** Breadth without a second
