@@ -1,0 +1,75 @@
+name: Agent run
+description: Run one headless agent turn on whichever engine the hub is configured for.
+
+# The hub is model-agnostic on purpose. Claude Code speaks the Anthropic wire
+# protocol to whatever ANTHROPIC_BASE_URL points at, so DeepSeek, a gateway or
+# Anthropic itself all arrive through the same handful of environment
+# variables — and swapping engines stays a change to agent-hub.config.json
+# rather than a rewrite of every workflow step.
+
+inputs:
+  api-key:
+    description: Key for the configured engine, from the AGENT_API_KEY secret.
+    required: true
+  base-url:
+    description: Anthropic-compatible endpoint. Empty means Anthropic's own API.
+    required: false
+    default: ""
+  model:
+    description: Model id for the main agent. Empty means the engine's default.
+    required: false
+    default: ""
+  subagent-model:
+    description: Model id for subagents; eval runs spawn one per eval.
+    required: false
+    default: ""
+  prompt:
+    description: The instruction to run.
+    required: true
+  allowed-tools:
+    description: Comma-separated tool list the run may use.
+    required: true
+  github-token:
+    description: Passed as GH_TOKEN when the run needs the gh CLI. Omit when it does not.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AGENT_API_KEY: ${{ inputs.api-key }}
+        AGENT_BASE_URL: ${{ inputs.base-url }}
+        AGENT_MODEL: ${{ inputs.model }}
+        AGENT_SUBAGENT_MODEL: ${{ inputs.subagent-model }}
+        AGENT_PROMPT: ${{ inputs.prompt }}
+        AGENT_TOOLS: ${{ inputs.allowed-tools }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        export ANTHROPIC_API_KEY="$AGENT_API_KEY"
+        export ANTHROPIC_AUTH_TOKEN="$AGENT_API_KEY"
+        if [ -n "$AGENT_BASE_URL" ]; then
+          export ANTHROPIC_BASE_URL="$AGENT_BASE_URL"
+        fi
+        if [ -n "$AGENT_MODEL" ]; then
+          # Claude Code asks for a tier by name, so every tier has to resolve to
+          # the configured model, or a third-party endpoint sees a model id it
+          # has never heard of.
+          export ANTHROPIC_MODEL="$AGENT_MODEL"
+          export ANTHROPIC_DEFAULT_OPUS_MODEL="$AGENT_MODEL"
+          export ANTHROPIC_DEFAULT_SONNET_MODEL="$AGENT_MODEL"
+        fi
+        if [ -n "$AGENT_SUBAGENT_MODEL" ]; then
+          export ANTHROPIC_DEFAULT_HAIKU_MODEL="$AGENT_SUBAGENT_MODEL"
+          export CLAUDE_CODE_SUBAGENT_MODEL="$AGENT_SUBAGENT_MODEL"
+        fi
+
+        # There is nobody at the keyboard to answer a permission prompt, and the
+        # blast radius is one ephemeral runner holding a fresh checkout, so the
+        # run is unattended by design; --allowed-tools still states what it needs.
+        npx --yes @anthropic-ai/claude-code@latest \
+          --print "$AGENT_PROMPT" \
+          --allowed-tools "$AGENT_TOOLS" \
+          --permission-mode bypassPermissions \
+          --output-format text

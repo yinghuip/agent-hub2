@@ -142,6 +142,36 @@ describe("validate", () => {
     expect((await validate({ root, now: NOW })).errors.map((e) => e.code)).toContain("manifest-drift");
   });
 
+  it("accepts an engine pointed at a non-Anthropic endpoint", async () => {
+    const config = JSON.parse(validTree()["agent-hub.config.json"]!);
+    const root = await writeTree(
+      validTree({
+        "agent-hub.config.json": JSON.stringify({
+          ...config,
+          engine: {
+            id: "deepseek",
+            baseUrl: "https://api.deepseek.com/anthropic",
+            model: "deepseek-v4-pro",
+            subagentModel: "deepseek-v4-flash",
+          },
+        }),
+      }),
+    );
+    await build({ root, now: NOW });
+    expect((await validate({ root, now: NOW })).errors).toEqual([]);
+  });
+
+  it("rejects an engine the generation workflow could not act on", async () => {
+    const config = JSON.parse(validTree()["agent-hub.config.json"]!);
+    const withEngine = (engine: unknown) =>
+      validTree({ "agent-hub.config.json": JSON.stringify({ ...config, engine }) });
+
+    expect(await codes(withEngine({ id: "deepseek", baseUrl: "api.deepseek.com" }))).toContain("config");
+    expect(await codes(withEngine({ id: "" }))).toContain("config");
+    // A key in the config is a key in git; it belongs in the AGENT_API_KEY secret.
+    expect(await codes(withEngine({ id: "deepseek", apiKey: "sk-live-not-here" }))).toContain("config");
+  });
+
   it("reports every plugin's problems, not just the first", async () => {
     const root = await writeTree({
       "agent-hub.config.json": validTree()["agent-hub.config.json"]!,

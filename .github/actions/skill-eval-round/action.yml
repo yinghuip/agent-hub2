@@ -1,0 +1,139 @@
+name: Skill eval round
+description: >
+  Run a generated skill's evals in fresh sessions, grade the results against the
+  expectations the request produced, and revise the skill wherever one failed.
+
+# One round is run-grade-refine, because the three only make sense together: a
+# grade nobody acts on is a report, and a revision nobody re-grades is a guess.
+# The caller decides whether another round is needed from the `passed` output.
+
+inputs:
+  api-key:
+    description: Key for the configured engine, from the AGENT_API_KEY secret.
+    required: true
+  base-url:
+    description: Anthropic-compatible endpoint for the configured engine.
+    required: false
+    default: ""
+  model:
+    description: Model id for the round's agent.
+    required: false
+    default: ""
+  subagent-model:
+    description: Model id for the eval runs, one subagent per eval.
+    required: false
+    default: ""
+  plugin-dir:
+    description: Directory name under plugins/ holding the generated plugin.
+    required: true
+  round:
+    description: 1-based round number; results are kept per round so the PR can show the progression.
+    required: true
+  workspace:
+    description: Directory outside the repo for run outputs and grades, so eval artefacts never reach the plugin.
+    required: true
+
+outputs:
+  passed:
+    description: "true when every expectation of every eval passed."
+    value: ${{ steps.grade.outputs.passed }}
+  report:
+    description: Path to this round's markdown grading table.
+    value: ${{ steps.grade.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run, grade and refine
+      uses: ./.github/actions/agent-run
+      with:
+        api-key: ${{ inputs.api-key }}
+        base-url: ${{ inputs.base-url }}
+        model: ${{ inputs.model }}
+        subagent-model: ${{ inputs.subagent-model }}
+        allowed-tools: Bash,Read,Write,Edit,Glob,Grep,Task
+        prompt: |
+          Round ${{ inputs.round }} of evaluating the skill(s) in plugins/${{ inputs.plugin-dir }}.
+
+          The repository is already on the skill's branch. Stay on it and commit there; do not
+          open or update a pull request, and do not push.
+
+          For every skill under plugins/${{ inputs.plugin-dir }}/skills/, read its
+          evals/evals.json and work through each eval:
+
+          1. Run it clean. Spawn one subagent per eval. Its entire context is the skill's
+             SKILL.md body verbatim, followed by the eval's `prompt` as the user's request.
+             Do NOT give it `expected_output` or `expectations` — a run that can see what it is
+             being graded on grades nothing. Tell it to save whatever it produces under
+             ${{ inputs.workspace }}/round-${{ inputs.round }}/<skill>/eval-<id>/output/ and to
+             report what it did. Spawn all of them in the same turn.
+
+          2. Grade it. For each expectation, decide from the run's output and transcript alone
+             whether it holds, and write
+             ${{ inputs.workspace }}/round-${{ inputs.round }}/<skill>/eval-<id>/grading.json:
+
+             {"eval_id": 1, "skill": "<skill>", "expectations": [
+               {"text": "<the expectation verbatim>", "passed": true,
+                "evidence": "<what in the output shows it, quoted>"}]}
+
+             Evidence is quoted from the run, never from the SKILL.md — what the skill tells a
+             model to do is not evidence that it did it. If you cannot point at the output, it
+             did not pass. Use those exact field names; the workflow reads them.
+
+          3. Fix what failed. For each failed expectation work out which instruction in the
+             SKILL.md allowed the failure, and change that instruction. Generalise: the skill
+             will be run on prompts nobody has written yet, so an instruction that names this
+             eval's specifics buys a passing grade and loses the skill. Prefer explaining why
+             something matters over adding another MUST, and delete instructions that made the
+             run waste its time.
+
+             Do not edit evals.json to make a failure go away — the expectations came from the
+             requester's scenarios and are the spec here. If an expectation is genuinely wrong
+             or cannot be tested this way, leave it failing and say why in
+             ${{ inputs.workspace }}/round-${{ inputs.round }}/notes.md.
+
+          4. Commit any change to the skill with a message naming what failed and what you
+             changed. If everything passed, change nothing and commit nothing.
+
+    - name: Read the grades
+      id: grade
+      shell: bash
+      run: |
+        round_dir="${{ inputs.workspace }}/round-${{ inputs.round }}"
+        report="$round_dir/report.md"
+        mkdir -p "$round_dir"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+
+        files=$(find "$round_dir" -name grading.json -type f | sort)
+        if [ -z "$files" ]; then
+          # No grades is a failure, not a pass: it means the round never ran the evals.
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo "Round ${{ inputs.round }} wrote no grading.json, so nothing was evaluated." > "$report"
+          cat "$report"
+          exit 0
+        fi
+
+        total=$(jq -s '[.[].expectations[]] | length' $files)
+        failed=$(jq -s '[.[].expectations[] | select(.passed | not)] | length' $files)
+
+        {
+          echo "### Round ${{ inputs.round }} — $((total - failed))/$total expectations passed"
+          echo
+          echo "| skill | eval | result | expectation | evidence |"
+          echo "| --- | --- | --- | --- | --- |"
+          jq -sr '.[] | . as $g | $g.expectations[]
+            | "| \($g.skill // "-") | \($g.eval_id) | \(if .passed then "pass" else "**fail**" end) | \(.text | gsub("\\|"; "\\|")) | \((.evidence // "") | gsub("\\|"; "\\|")) |"' $files
+          if [ -f "$round_dir/notes.md" ]; then
+            echo
+            echo "Notes from the run:"
+            echo
+            cat "$round_dir/notes.md"
+          fi
+        } > "$report"
+        cat "$report"
+
+        if [ "$total" -gt 0 ] && [ "$failed" -eq 0 ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi

@@ -14,5 +14,11 @@
   "approvalLabel": "approved-for-generation",
   "platformReviewers": [
     "yinghuip"
-  ]
+  ],
+  "engine": {
+    "id": "deepseek",
+    "baseUrl": "https://api.deepseek.com/anthropic",
+    "model": "deepseek-v4-pro",
+    "subagentModel": "deepseek-v4-flash"
+  }
 }
