@@ -543,12 +543,15 @@ function requestPage(config: HubConfig, plugins: CatalogPlugin[], floor: number)
   const repo = JSON.stringify(config.repo);
   const openRequests = JSON.stringify("./requests.html");
   const body = `<article class="detail">
+<header class="detail-head">
 <h1>Request a skill</h1>
 <p class="lede">Describe what you need in plain language. This page checks your answers, then hands them to
 GitHub's own request form, so the issue opens under <strong>your own</strong> account: no token to create,
 and you stay reachable for questions and get notified when the skill ships.</p>
+</header>
 
-<form id="request">
+<form id="request" novalidate>
+  <p class="hint">Every field is required. Extra examples you leave blank are simply left out.</p>
   <label>Skill title<input name="title" required placeholder="PR review checklist" autocomplete="off"></label>
   <div id="similar" role="status" hidden></div>
 
@@ -577,6 +580,8 @@ and you stay reachable for questions and get notified when the skill ships.</p>
   </fieldset>
 
   <button type="submit">Continue on GitHub</button>
+  <p class="hint">Opens GitHub's issue form in a new tab, prefilled with these answers. You check it over and
+  press Create there; nothing is filed until you do.</p>
   <p id="status" role="status"></p>
 </form>
 
@@ -722,19 +727,55 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
     };
   }
 
-  /** Catch what the generation agent's parser would reject, while it is still fixable. */
+  /**
+   * One validation voice for the whole form (the form is novalidate, so the
+   * browser's bubble never competes with it). Catches what the generation
+   * agent's parser would reject while it is still fixable, and every fault
+   * names the control to send the requester back to.
+   */
   function complain(answer) {
-    if (answer.roles.length === 0) return "Pick at least one role.";
-    var pairs = examples();
-    var touched = pairs.filter(function (pair) { return pair.scenario || pair.expected; });
-    if (touched.length === 0) return "Give at least one example: a scenario and its expected result.";
-    for (var index = 0; index < pairs.length; index += 1) {
-      var pair = pairs[index];
-      if (!pair.scenario && !pair.expected) continue;
-      if (!pair.scenario) return "Example " + (index + 1) + " has an expected result but no scenario.";
-      if (!pair.expected) return "Example " + (index + 1) + " has a scenario but no expected result.";
+    if (!answer.title.trim()) {
+      return { message: "Give the skill a title.", control: form.elements.title };
+    }
+    if (answer.roles.length === 0) {
+      return { message: "Pick at least one role.", control: form.querySelector('input[name="roles"]') };
+    }
+    if (!answer.problem.trim()) {
+      return { message: "Say what problem the skill should solve.", control: form.elements.problem };
+    }
+    var items = Array.prototype.slice.call(exampleList.querySelectorAll(".example"));
+    var touched = 0;
+    for (var index = 0; index < items.length; index += 1) {
+      var scenario = items[index].querySelector('[data-part="scenario"]');
+      var expected = items[index].querySelector('[data-part="expected"]');
+      if (!scenario.value.trim() && !expected.value.trim()) continue;
+      touched += 1;
+      if (!scenario.value.trim()) {
+        return { message: "Example " + (index + 1) + " has an expected result but no scenario.", control: scenario };
+      }
+      if (!expected.value.trim()) {
+        return { message: "Example " + (index + 1) + " has a scenario but no expected result.", control: expected };
+      }
+    }
+    if (touched === 0) {
+      return {
+        message: "Give at least one example: a scenario and its expected result.",
+        control: exampleList.querySelector('[data-part="scenario"]')
+      };
     }
     return null;
+  }
+
+  /** Say what is wrong, mark the control, and take the requester to it. */
+  function fail(fault) {
+    say(fault.message, "error");
+    var control = fault.control;
+    if (control.type !== "checkbox") {
+      control.setAttribute("aria-invalid", "true");
+      control.addEventListener("input", function () { control.removeAttribute("aria-invalid"); }, { once: true });
+    }
+    control.focus();
+    control.scrollIntoView({ block: "center" });
   }
 
   /**
@@ -789,8 +830,8 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     var answer = answers();
-    var problem = complain(answer);
-    if (problem) { say(problem, "error"); return; }
+    var fault = complain(answer);
+    if (fault) { fail(fault); return; }
 
     // Never a block: the GitHub form below would sidestep one anyway, and a
     // wrong match that stops a real request costs more than a duplicate issue.
@@ -801,6 +842,11 @@ target="_blank" rel="noopener">Open GitHub's form empty</a> if you would rather 
         interstitial(matches);
         button.textContent = "Continue anyway";
         say("Look at these first. The button now takes your request to GitHub as written.");
+        // The warning renders beside the title field, a screen away from the
+        // button that raised it: go there, or it was never said.
+        similar.scrollIntoView({ block: "center" });
+        var first = similar.querySelector("a");
+        if (first) first.focus();
         return;
       }
     }
@@ -1127,6 +1173,8 @@ button[disabled] { opacity: .6; cursor: progress; }
 .similar-lead { font: 700 .6875rem var(--display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
 #status { margin-top: 1.25rem; }
 #status.error { color: var(--accent-fg); }
+/* The fault the status names, marked at the field itself. Cleared on input. */
+form [aria-invalid="true"] { border-color: var(--accent); }
 #no-results { color: var(--muted); }
 .icon { display: block; }
 .skip { position: absolute; left: -9999px; top: 0; z-index: 10; padding: .75rem 1rem; background: var(--accent); color: var(--on-accent); font: 700 .8125rem var(--display); text-transform: uppercase; letter-spacing: .1em; }

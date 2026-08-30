@@ -288,6 +288,17 @@ renumbering as examples come and go. The page composes the
 format cannot be malformed and validation now speaks about content ("Example 2
 has a scenario but no expected result"), never about syntax.
 
+Validation itself speaks in one voice: the form is `novalidate`, so the
+browser's own bubble never competes with the status line, and every fault
+focuses and scrolls to the control it names, marking it `aria-invalid` with an
+accent border that clears on input. "Every field is required" is said once at
+the top rather than discovered failure by failure. The duplicate-skill
+interstitial, which renders beside the title field, scrolls itself into view
+and hands focus to the first match when the submit button a screen below
+raises it. The hand-off consequence is restated at the point of action: a hint
+under the button says GitHub's prefilled form opens in a new tab and nothing
+is filed until Create is pressed there.
+
 Amended after this design was written: the token field described here no longer
 exists. The form asks for no credential and hands its answers to GitHub's own
 prefilled issue form, so the status region reports the hand-off rather than an
