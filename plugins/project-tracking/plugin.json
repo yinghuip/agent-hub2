@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schema/v1.0.0/plugin.json",
   "name": "project-tracking",
   "description": "Issues, boards, estimates, standups and sprint ceremonies.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Platform Team",
     "email": "platform@example.com"
@@ -13,6 +13,9 @@
     "sprint",
     "backlog",
     "work-item",
-    "azure-devops"
+    "azure-devops",
+    "solution-architecture",
+    "requirements",
+    "security"
   ]
 }

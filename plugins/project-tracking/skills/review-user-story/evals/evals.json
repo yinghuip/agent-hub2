@@ -1,0 +1,29 @@
+{
+  "skill_name": "review-user-story",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I will pass in an Azure DevOps work item. Review the user story and list out all the non-functional requirements.",
+      "expected_output": "list out all non-functional requirements",
+      "files": [],
+      "expectations": [
+        "names concrete non-functional categories such as performance, availability, scalability, usability, or compliance",
+        "covers more than one non-functional category, not a single requirement",
+        "ties each requirement back to the story or its acceptance criteria rather than giving a generic NFR definition",
+        "keeps the non-functional list separate from any security requirements in the output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I will pass in an Azure DevOps work item. Review the user story and list out all the security requirements.",
+      "expected_output": "list out all security requirements",
+      "files": [],
+      "expectations": [
+        "names concrete security categories such as authentication, authorisation, encryption, input validation, or audit",
+        "covers more than one security category, not a single requirement",
+        "ties each security requirement back to the part of the story that creates it rather than giving a generic security definition",
+        "keeps the security list separate from the non-functional requirements in the output"
+      ]
+    }
+  ]
+}
