@@ -1,0 +1,17 @@
+{
+  "name": "project-tracking",
+  "description": "Issues, boards, estimates, standups and sprint ceremonies.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Platform Team",
+    "email": "platform@example.com"
+  },
+  "keywords": [
+    "project-tracking",
+    "estimates",
+    "sprint",
+    "backlog",
+    "work-item",
+    "azure-devops"
+  ]
+}
