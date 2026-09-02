@@ -1,12 +1,13 @@
 name: project-tracking
 description: Issues, boards, estimates, standups and sprint ceremonies.
-version: 1.0.0
+version: 1.1.0
 ownerTeam: platform
 author:
   name: Platform Team
   email: platform@example.com
 roles:
   - Scrum Master
+  - Business Analyst
 keywords:
   - project-tracking
   - estimates
@@ -14,3 +15,6 @@ keywords:
   - backlog
   - work-item
   - azure-devops
+  - solution-architecture
+  - requirements
+  - security
