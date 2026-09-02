@@ -1,0 +1,27 @@
+{
+  "skill_name": "azure-devops-work-items",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a Product Backlog Item with 1 story point. Break it into child task work items and assign effort.",
+      "expected_output": "child task work item assign 1 as effort",
+      "files": [],
+      "expectations": [
+        "states that a 1-point story maps to a child task effort of 1",
+        "includes a step or command that creates a child Task work item",
+        "derives the effort from the parent's story points rather than asking the user to supply it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I have a user story with 2 story points. Create child task work items and assign effort based on the story points.",
+      "expected_output": "child task work item assign 4 as effort",
+      "files": [],
+      "expectations": [
+        "states that a 2-point story maps to a child task effort of 4",
+        "includes a step or command that creates a child Task work item",
+        "applies the documented story-point-to-effort mapping rather than a fixed or guessed value"
+      ]
+    }
+  ]
+}
